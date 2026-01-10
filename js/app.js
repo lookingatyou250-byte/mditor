@@ -633,6 +633,9 @@ class App {
                 this.editor.setValue(this.currentContent);
             }
 
+            // 初始化斜杠命令
+            this._initSlashCommands();
+
             this.editor?.focus();
 
         } else if (mode === 'read' && this.isEditMode) {
@@ -847,6 +850,158 @@ class App {
             });
             this.editor.focus();
         }
+    }
+
+    // ========== 斜杠命令 ==========
+
+    /**
+     * 初始化斜杠命令监听
+     */
+    _initSlashCommands() {
+        if (!this.editor?.view) return;
+
+        // 监听编辑器内容变化来检测 /
+        this.editor.view.dom.addEventListener('keydown', (e) => {
+            if (this.slashMenuVisible) {
+                this._handleSlashMenuKeydown(e);
+            }
+        });
+
+        // 监听 / 输入
+        this.editor.view.dom.addEventListener('input', (e) => {
+            this._checkForSlashTrigger();
+        });
+
+        // 点击其他地方关闭菜单
+        document.addEventListener('click', (e) => {
+            if (this.slashMenuVisible && !this.elements.slashMenu.contains(e.target)) {
+                this._hideSlashMenu();
+            }
+        });
+    }
+
+    /**
+     * 检测是否输入了 /
+     */
+    _checkForSlashTrigger() {
+        if (!this.editor?.view) return;
+
+        const state = this.editor.view.state;
+        const { from } = state.selection.main;
+
+        // 获取光标前的字符
+        if (from > 0) {
+            const beforeCursor = state.sliceDoc(from - 1, from);
+            const beforeThat = from > 1 ? state.sliceDoc(from - 2, from - 1) : ' ';
+
+            // 只在行首或空格后的 / 触发
+            if (beforeCursor === '/' && (beforeThat === '\n' || beforeThat === ' ' || from === 1)) {
+                this._showSlashMenu();
+            }
+        }
+    }
+
+    /**
+     * 显示斜杠菜单
+     */
+    _showSlashMenu() {
+        if (!this.elements.slashMenu || !this.editor?.view) return;
+
+        this.slashMenuVisible = true;
+        this.slashMenuIndex = 0;
+
+        // 获取光标位置
+        const coords = this.editor.view.coordsAtPos(this.editor.view.state.selection.main.from);
+
+        // 渲染菜单
+        this._renderSlashMenu();
+
+        // 定位菜单
+        this.elements.slashMenu.style.display = 'block';
+        this.elements.slashMenu.style.left = `${coords.left}px`;
+        this.elements.slashMenu.style.top = `${coords.bottom + 5}px`;
+    }
+
+    /**
+     * 隐藏斜杠菜单
+     */
+    _hideSlashMenu() {
+        if (!this.elements.slashMenu) return;
+
+        this.slashMenuVisible = false;
+        this.elements.slashMenu.style.display = 'none';
+    }
+
+    /**
+     * 渲染斜杠菜单内容
+     */
+    _renderSlashMenu() {
+        const list = this.elements.slashMenu.querySelector('.slash-menu-list');
+        if (!list) return;
+
+        list.innerHTML = this.slashCommands.map((cmd, i) => `
+            <div class="slash-menu-item ${i === this.slashMenuIndex ? 'active' : ''}" data-index="${i}">
+                <span class="slash-menu-icon">${cmd.icon}</span>
+                <span class="slash-menu-label">${cmd.label}</span>
+                <span class="slash-menu-hint">${cmd.hint}</span>
+            </div>
+        `).join('');
+
+        // 绑定点击事件
+        list.querySelectorAll('.slash-menu-item').forEach(item => {
+            item.addEventListener('click', () => {
+                const index = parseInt(item.dataset.index);
+                this._executeSlashCommand(index);
+            });
+        });
+    }
+
+    /**
+     * 处理斜杠菜单键盘事件
+     */
+    _handleSlashMenuKeydown(e) {
+        switch (e.key) {
+            case 'ArrowUp':
+                e.preventDefault();
+                this.slashMenuIndex = Math.max(0, this.slashMenuIndex - 1);
+                this._renderSlashMenu();
+                break;
+            case 'ArrowDown':
+                e.preventDefault();
+                this.slashMenuIndex = Math.min(this.slashCommands.length - 1, this.slashMenuIndex + 1);
+                this._renderSlashMenu();
+                break;
+            case 'Enter':
+                e.preventDefault();
+                this._executeSlashCommand(this.slashMenuIndex);
+                break;
+            case 'Escape':
+                e.preventDefault();
+                this._hideSlashMenu();
+                break;
+        }
+    }
+
+    /**
+     * 执行斜杠命令
+     */
+    _executeSlashCommand(index) {
+        const cmd = this.slashCommands[index];
+        if (!cmd) return;
+
+        // 删除触发的 /
+        if (this.editor?.view) {
+            const { from } = this.editor.view.state.selection.main;
+            this.editor.view.dispatch({
+                changes: { from: from - 1, to: from, insert: '' }
+            });
+        }
+
+        // 执行命令
+        cmd.action();
+
+        // 隐藏菜单
+        this._hideSlashMenu();
     }
 }
 
