@@ -53,13 +53,14 @@ class App {
             fileName: document.getElementById('file-name'),
             themeBtn: document.getElementById('theme-toggle'),
             sidebarBtn: document.getElementById('sidebar-toggle'),
-            focusBtn: document.getElementById('focus-toggle'),
-            typewriterBtn: document.getElementById('typewriter-toggle'),
-            openBtn: document.getElementById('open-file'),
             // 编辑器相关
             editorContainer: document.getElementById('editor'),
-            modeReadBtn: document.getElementById('mode-read'),
-            modeEditBtn: document.getElementById('mode-edit')
+            modeToggleBtn: document.getElementById('mode-toggle'),
+            // 状态栏
+            statusbar: document.getElementById('statusbar'),
+            wordCount: document.getElementById('word-count'),
+            currentMode: document.getElementById('current-mode'),
+            saveIndicator: document.getElementById('save-indicator')
         };
     }
 
@@ -96,17 +97,93 @@ class App {
 
         // 键盘快捷键
         this._bindKeyboardShortcuts();
+
+        // Electron IPC 监听
+        this._bindElectronEvents();
+    }
+
+    /**
+     * 绑定 Electron IPC 事件
+     */
+    _bindElectronEvents() {
+        if (!window.electronAPI) return;
+
+        // 新建文件
+        window.electronAPI.onNewFile?.(() => {
+            this._newFile();
+        });
+
+        // 保存请求（来自菜单 Ctrl+S）
+        window.electronAPI.onRequestSave?.((forceDialog) => {
+            this._saveFile(forceDialog);
+        });
+
+        // 另存为请求
+        window.electronAPI.onRequestSaveAs?.(() => {
+            this._saveFile(true);
+        });
+    }
+
+    /**
+     * 新建文件
+     */
+    _newFile() {
+        this.currentContent = '';
+        this.currentFileName = '未命名.md';
+
+        if (this.elements.fileName) {
+            this.elements.fileName.textContent = this.currentFileName;
+        }
+
+        // 清空阅读区
+        this.renderer.clear?.();
+        this.outline.clear?.();
+
+        // 如果在编辑模式，清空编辑器
+        if (this.editor) {
+            this.editor.setValue('');
+        }
+
+        // 默认进入编辑模式
+        this._setMode('edit');
+        this._markUnsaved();
+        this._updateWordCount('');
+    }
+
+    /**
+     * 保存文件
+     */
+    async _saveFile(forceDialog = false) {
+        if (!window.electronAPI?.saveFile) {
+            this._showToast('保存功能仅在桌面应用中可用', 'error');
+            return;
+        }
+
+        // 获取最新内容
+        const content = this.editor ? this.editor.getValue() : this.currentContent;
+
+        try {
+            const result = await window.electronAPI.saveFile(content, forceDialog);
+
+            if (result.success) {
+                this.currentFileName = result.fileName;
+                if (this.elements.fileName) {
+                    this.elements.fileName.textContent = result.fileName;
+                }
+                this._markSaved();
+                this._showToast(`已保存: ${result.fileName}`, 'success');
+            } else if (!result.canceled) {
+                this._showToast(`保存失败: ${result.error}`, 'error');
+            }
+        } catch (e) {
+            this._showToast('保存时发生错误', 'error');
+        }
     }
 
     /**
      * 绑定工具栏事件
      */
     _bindToolbarEvents() {
-        // 打开文件
-        this.elements.openBtn?.addEventListener('click', () => {
-            this.fileHandler.openFilePicker();
-        });
-
         // 主题切换
         this.elements.themeBtn?.addEventListener('click', () => {
             this._toggleTheme();
@@ -117,24 +194,9 @@ class App {
             this._toggleSidebar();
         });
 
-        // Focus Mode
-        this.elements.focusBtn?.addEventListener('click', () => {
-            this._toggleFocusMode();
-        });
-
-        // Typewriter Mode
-        this.elements.typewriterBtn?.addEventListener('click', () => {
-            this._toggleTypewriterMode();
-        });
-
-        // 阅读模式按钮
-        this.elements.modeReadBtn?.addEventListener('click', () => {
-            this._setMode('read');
-        });
-
-        // 编辑模式按钮
-        this.elements.modeEditBtn?.addEventListener('click', () => {
-            this._setMode('edit');
+        // 模式切换（单按钮）
+        this.elements.modeToggleBtn?.addEventListener('click', () => {
+            this._setMode(this.isEditMode ? 'read' : 'edit');
         });
     }
 
@@ -227,9 +289,8 @@ class App {
             // 切换到编辑模式
             this.isEditMode = true;
 
-            // 更新按钮状态
-            this.elements.modeReadBtn?.classList.remove('active');
-            this.elements.modeEditBtn?.classList.add('active');
+            // 更新 UI
+            this._updateModeUI();
 
             // 隐藏阅读区，显示编辑区
             this.elements.content.style.display = 'none';
@@ -243,6 +304,8 @@ class App {
                     isDark,
                     onChange: (content) => {
                         this.currentContent = content;
+                        this._markUnsaved();
+                        this._updateWordCount(content);
                         // 实时更新大纲
                         const outline = this.parser.extractOutline(content);
                         this.eventBus.emit(Events.OUTLINE_UPDATED, outline);
@@ -258,9 +321,8 @@ class App {
             // 切换到阅读模式
             this.isEditMode = false;
 
-            // 更新按钮状态
-            this.elements.modeReadBtn?.classList.add('active');
-            this.elements.modeEditBtn?.classList.remove('active');
+            // 更新 UI
+            this._updateModeUI();
 
             // 从编辑器获取最新内容
             if (this.editor) {
@@ -277,6 +339,48 @@ class App {
             this.elements.editorContainer.style.display = 'none';
             this.elements.content.style.display = 'block';
         }
+    }
+
+    /**
+     * 更新模式相关 UI
+     */
+    _updateModeUI() {
+        const modeIcon = this.elements.modeToggleBtn?.querySelector('.mode-icon');
+        if (modeIcon) {
+            modeIcon.textContent = this.isEditMode ? '✏️' : '📖';
+        }
+        if (this.elements.currentMode) {
+            this.elements.currentMode.textContent = this.isEditMode ? '编辑模式' : '阅读模式';
+        }
+    }
+
+    /**
+     * 更新字数统计
+     */
+    _updateWordCount(content) {
+        if (this.elements.wordCount) {
+            // 统计中文字符和英文单词
+            const chineseChars = (content.match(/[\u4e00-\u9fa5]/g) || []).length;
+            const englishWords = (content.match(/[a-zA-Z]+/g) || []).length;
+            const total = chineseChars + englishWords;
+            this.elements.wordCount.textContent = `${total} 字`;
+        }
+    }
+
+    /**
+     * 标记未保存状态
+     */
+    _markUnsaved() {
+        this.hasUnsavedChanges = true;
+        this.elements.saveIndicator?.classList.add('unsaved');
+    }
+
+    /**
+     * 清除未保存状态
+     */
+    _markSaved() {
+        this.hasUnsavedChanges = false;
+        this.elements.saveIndicator?.classList.remove('unsaved');
     }
 
     /**

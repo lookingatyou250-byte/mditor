@@ -314,3 +314,80 @@ kbd {
     overflow: auto;
     font-family: var(--font-serif);
 }
+
+/* ----------------------
+   Status Bar
+   ---------------------- */
+.statusbar {
+    height: 24px;
+    background: var(--bg-sidebar);
+    border-top: 1px solid var(--bg-hover);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 16px;
+    font-size: 11px;
+    color: var(--text-tertiary);
+    flex-shrink: 0;
+}
+
+.statusbar-left,
+.statusbar-right {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.status-mode {
+    padding: 2px 8px;
+    background: var(--bg-hover);
+    border-radius: 3px;
+    font-weight: 500;
+}
+
+/* ----------------------
+   Save Indicator
+   ---------------------- */
+.save-indicator {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-left: 8px;
+    opacity: 0;
+    transition: opacity 0.2s;
+}
+
+.save-indicator.unsaved {
+    background: var(--color-warning, #f59e0b);
+    opacity: 1;
+}
+
+.save-indicator.saving {
+    background: var(--color-primary);
+    opacity: 1;
+    animation: pulse 1s infinite;
+}
+
+@keyframes pulse {
+
+    0%,
+    100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.4;
+    }
+}
+
+/* ----------------------
+   Mode Indicator
+   ---------------------- */
+.mode-indicator .mode-icon {
+    font-size: 14px;
+    transition: transform 0.2s;
+}
+
+.mode-indicator:hover .mode-icon {
+    transform: scale(1.1);
+}

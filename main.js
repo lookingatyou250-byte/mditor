@@ -5,6 +5,7 @@ const fs = require('fs');
 // ========== 全局状态 ==========
 let mainWindow = null;
 let initialFilePath = null;  // 启动时要打开的文件
+let currentFilePath = null;  // 当前正在编辑的文件路径
 
 // ========== 立即捕获启动参数（在 app.whenReady 之前）==========
 // Windows/Linux: 文件路径在 argv 中
@@ -90,6 +91,41 @@ ipcMain.handle('get-initial-file', async () => {
     return null;
 });
 
+// 保存文件
+ipcMain.handle('save-file', async (event, { content, forceDialog }) => {
+    // 如果有当前文件路径且不强制弹窗，直接保存
+    if (currentFilePath && !forceDialog) {
+        try {
+            fs.writeFileSync(currentFilePath, content, 'utf-8');
+            return { success: true, filePath: currentFilePath, fileName: path.basename(currentFilePath) };
+        } catch (e) {
+            return { success: false, error: e.message };
+        }
+    }
+
+    // 否则弹出另存为对话框
+    const result = await dialog.showSaveDialog(mainWindow, {
+        defaultPath: currentFilePath || 'untitled.md',
+        filters: [
+            { name: 'Markdown', extensions: ['md'] },
+            { name: 'All Files', extensions: ['*'] }
+        ]
+    });
+
+    if (result.canceled) {
+        return { success: false, canceled: true };
+    }
+
+    try {
+        fs.writeFileSync(result.filePath, content, 'utf-8');
+        currentFilePath = result.filePath;
+        app.addRecentDocument(result.filePath);
+        return { success: true, filePath: result.filePath, fileName: path.basename(result.filePath) };
+    } catch (e) {
+        return { success: false, error: e.message };
+    }
+});
+
 // ========== 发送文件到 Renderer ==========
 function sendFileToRenderer(filePath) {
     if (!mainWindow || !filePath) return;
@@ -130,6 +166,14 @@ function getMenuTemplate() {
             label: '文件',
             submenu: [
                 {
+                    label: '新建',
+                    accelerator: 'CmdOrCtrl+N',
+                    click: () => {
+                        currentFilePath = null;
+                        mainWindow.webContents.send('new-file');
+                    }
+                },
+                {
                     label: '打开...',
                     accelerator: 'CmdOrCtrl+O',
                     click: async () => {
@@ -141,8 +185,24 @@ function getMenuTemplate() {
                         });
 
                         if (!result.canceled && result.filePaths.length > 0) {
-                            sendFileToRenderer(result.filePaths[0]);
+                            currentFilePath = result.filePaths[0];
+                            sendFileToRenderer(currentFilePath);
                         }
+                    }
+                },
+                { type: 'separator' },
+                {
+                    label: '保存',
+                    accelerator: 'CmdOrCtrl+S',
+                    click: () => {
+                        mainWindow.webContents.send('request-save');
+                    }
+                },
+                {
+                    label: '另存为...',
+                    accelerator: 'CmdOrCtrl+Shift+S',
+                    click: () => {
+                        mainWindow.webContents.send('request-save-as');
                     }
                 },
                 { type: 'separator' },
