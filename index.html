@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="一个类似 Typora 的精美 Markdown 阅读器">
+  <meta name="description" content="一个优雅的 Markdown 阅读器">
   <title>mditor - Markdown 阅读器</title>
 
   <!-- 字体 -->
@@ -30,6 +30,9 @@
     <!-- 工具栏 -->
     <header id="toolbar" class="toolbar">
       <div class="toolbar-left">
+        <button id="theme-toggle" class="toolbar-btn" title="切换主题">
+          🌙
+        </button>
         <button id="sidebar-toggle" class="toolbar-btn active" title="切换侧边栏 (Ctrl+\)">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <rect x="3" y="3" width="18" height="18" rx="2" />
@@ -65,9 +68,6 @@
             <line x1="18" y1="10" x2="18" y2="10" />
             <line x1="8" y1="14" x2="16" y2="14" />
           </svg>
-        </button>
-        <button id="theme-toggle" class="toolbar-btn" title="切换主题">
-          🌙
         </button>
       </div>
     </header>
