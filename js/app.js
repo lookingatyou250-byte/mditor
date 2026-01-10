@@ -28,6 +28,9 @@ class App {
         this._applyTheme();
         this._loadDemo();
 
+        // 检查是否有通过双击/命令行打开的文件（Electron 环境）
+        this._checkInitialFile();
+
         console.log('📝 Markdown Reader initialized');
     }
 
@@ -165,6 +168,22 @@ class App {
         this.eventBus.emit(Events.OUTLINE_UPDATED, outline);
 
         this._showToast(`已加载: ${fileName}`, 'success');
+    }
+
+    /**
+     * 检查并加载启动时打开的文件（Electron 拉取模式）
+     */
+    async _checkInitialFile() {
+        if (window.electronAPI && window.electronAPI.getInitialFile) {
+            try {
+                const data = await window.electronAPI.getInitialFile();
+                if (data && data.content) {
+                    this._onFileLoaded(data.content, data.fileName);
+                }
+            } catch (e) {
+                console.error('Failed to get initial file:', e);
+            }
+        }
     }
 
     /**
