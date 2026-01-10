@@ -34,20 +34,20 @@ class App {
         this.slashMenuVisible = false;
         this.slashMenuIndex = 0;
         this.slashCommands = [
-            { icon: 'H1', label: '标题 1', hint: '# ', action: () => this._insertText('# ') },
-            { icon: 'H2', label: '标题 2', hint: '## ', action: () => this._insertText('## ') },
-            { icon: 'H3', label: '标题 3', hint: '### ', action: () => this._insertText('### ') },
-            { icon: 'B', label: '粗体', hint: '**文本**', action: () => this._wrapText('**') },
-            { icon: 'I', label: '斜体', hint: '*文本*', action: () => this._wrapText('*') },
-            { icon: '`', label: '代码', hint: '`代码`', action: () => this._wrapText('`') },
-            { icon: '```', label: '代码块', hint: '```', action: () => this._insertText('```\n\n```', -4) },
-            { icon: '>', label: '引用', hint: '> ', action: () => this._insertText('> ') },
-            { icon: '•', label: '列表', hint: '- ', action: () => this._insertText('- ') },
-            { icon: '1.', label: '有序列表', hint: '1. ', action: () => this._insertText('1. ') },
-            { icon: '☑', label: '任务', hint: '- [ ] ', action: () => this._insertText('- [ ] ') },
-            { icon: '🔗', label: '链接', hint: '[文本](url)', action: () => this._insertText('[](url)', -6) },
-            { icon: '🖼', label: '图片', hint: '![](url)', action: () => this._insertText('![](url)', -6) },
-            { icon: '—', label: '分割线', hint: '---', action: () => this._insertText('\n---\n') },
+            { icon: 'H1', label: '标题 1', hint: '# ', text: '# ' },
+            { icon: 'H2', label: '标题 2', hint: '## ', text: '## ' },
+            { icon: 'H3', label: '标题 3', hint: '### ', text: '### ' },
+            { icon: 'B', label: '粗体', hint: '**文本**', text: '**文本**', selectFrom: 2, selectTo: 4 },
+            { icon: 'I', label: '斜体', hint: '*文本*', text: '*文本*', selectFrom: 1, selectTo: 3 },
+            { icon: '`', label: '代码', hint: '`代码`', text: '`代码`', selectFrom: 1, selectTo: 3 },
+            { icon: '```', label: '代码块', hint: '```', text: '```\n\n```', cursorOffset: -4 },
+            { icon: '>', label: '引用', hint: '> ', text: '> ' },
+            { icon: '•', label: '列表', hint: '- ', text: '- ' },
+            { icon: '1.', label: '有序列表', hint: '1. ', text: '1. ' },
+            { icon: '☑', label: '任务', hint: '- [ ] ', text: '- [ ] ' },
+            { icon: '🔗', label: '链接', hint: '[文本](url)', text: '[](url)', cursorOffset: -6 },
+            { icon: '🖼', label: '图片', hint: '![](url)', text: '![](url)', cursorOffset: -6 },
+            { icon: '—', label: '分割线', hint: '---', text: '\n---\n' },
         ];
 
         // DOM 元素缓存
@@ -986,20 +986,33 @@ class App {
      */
     _executeSlashCommand(index) {
         const cmd = this.slashCommands[index];
-        if (!cmd) return;
+        if (!cmd || !this.editor?.view) return;
 
-        // 删除触发的 // (2个字符)
-        if (this.editor?.view) {
-            const { from } = this.editor.view.state.selection.main;
-            this.editor.view.dispatch({
-                changes: { from: from - 2, to: from, insert: '' }
-            });
+        const { from } = this.editor.view.state.selection.main;
+        const text = cmd.text;
+
+        // 计算 // 的起始位置（光标前2个字符）
+        const deleteFrom = from - 2;
+
+        // 单次 dispatch：删除 // 并插入格式文本
+        let selection;
+        if (cmd.selectFrom !== undefined && cmd.selectTo !== undefined) {
+            // 选中部分文本（如 **文本**）
+            selection = { anchor: deleteFrom + cmd.selectFrom, head: deleteFrom + cmd.selectTo };
+        } else if (cmd.cursorOffset !== undefined) {
+            // 光标偏移（如代码块）
+            selection = { anchor: deleteFrom + text.length + cmd.cursorOffset };
+        } else {
+            // 默认光标在文本末尾
+            selection = { anchor: deleteFrom + text.length };
         }
 
-        // 执行命令
-        cmd.action();
+        this.editor.view.dispatch({
+            changes: { from: deleteFrom, to: from, insert: text },
+            selection: selection
+        });
 
-        // 隐藏菜单
+        this.editor.focus();
         this._hideSlashMenu();
     }
 }
