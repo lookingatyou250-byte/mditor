@@ -111,9 +111,28 @@ class MarkdownParser {
 
     /**
      * 安全过滤 HTML
-     * 移除危险标签和属性
+     * 使用 DOMPurify 替代正则过滤
      */
     _sanitize(html) {
+        if (typeof DOMPurify === 'undefined') {
+            console.error('DOMPurify not loaded, falling back to basic regex sanitization');
+            return this._regexSanitize(html);
+        }
+
+        return DOMPurify.sanitize(html, {
+            ALLOWED_TAGS: ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'span', 'div', 'ul', 'ol', 'li', 'blockquote', 'pre', 'code', 'a', 'img', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'strong', 'em', 'del', 'br', 'hr', 'input', 'figure', 'figcaption'],
+            ALLOWED_ATTR: ['href', 'title', 'class', 'id', 'src', 'alt', 'loading', 'type', 'checked', 'disabled', 'target', 'rel', 'style', 'data-lang'],
+            FORBID_TAGS: ['script', 'style', 'iframe', 'form', 'object', 'embed'],
+            FORBID_ATTR: ['onerror', 'onclick', 'onload', 'onmouseover', 'onfocus', 'onblur'],
+            ALLOW_DATA_ATTR: true
+        });
+    }
+
+    /**
+     * 正则过滤兜底方案 (仅当 DOMPurify 加载失败时使用)
+     * 移除危险标签和属性
+     */
+    _regexSanitize(html) {
         // 危险标签
         const dangerousTags = ['script', 'style', 'iframe', 'object', 'embed', 'form'];
         dangerousTags.forEach(tag => {

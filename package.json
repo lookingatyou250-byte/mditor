@@ -54,5 +54,8 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true
     }
+  },
+  "dependencies": {
+    "dompurify": "^3.3.1"
   }
 }
