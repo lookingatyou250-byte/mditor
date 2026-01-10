@@ -1,163 +1,244 @@
 /* ----------------------
-   Toolbar
+   Custom Titlebar (Frameless Window)
    ---------------------- */
-.toolbar {
-    height: var(--toolbar-height);
+.titlebar {
+    height: 38px;
     background-color: var(--bg-body);
-    border-bottom: 1px solid var(--bg-hover);
-    /* 微妙的边框 */
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0 16px;
+    padding: 0 8px;
     flex-shrink: 0;
-    z-index: 20;
-    transition: background-color var(--transition-normal);
+    -webkit-app-region: drag;
+    /* 允许拖拽窗口 */
+    user-select: none;
+    position: relative;
+    z-index: 100;
 }
 
-.toolbar-left,
-.toolbar-center,
-.toolbar-right {
+.titlebar-drag {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 100%;
+    -webkit-app-region: drag;
+}
+
+.titlebar-left,
+.titlebar-center,
+.titlebar-right {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 4px;
+    -webkit-app-region: no-drag;
+    /* 按钮区域不拖拽 */
+    z-index: 1;
 }
 
-.toolbar-center {
+.titlebar-center {
     position: absolute;
     left: 50%;
     transform: translateX(-50%);
 }
 
-.file-name {
-    font-size: 14px;
-    color: var(--text-secondary);
-    font-weight: 500;
-    margin-left: 8px;
-    max-width: 200px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    opacity: 0;
-    transform: translateY(5px);
-    animation: fadeIn 0.4s forwards;
-}
-
-@keyframes fadeIn {
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
-}
-
-/* Toolbar Buttons */
-.toolbar-btn {
+/* Titlebar Buttons */
+.titlebar-btn {
     background: transparent;
     border: none;
-    color: var(--text-secondary);
-    width: 32px;
-    height: 32px;
-    border-radius: var(--radius-md);
+    color: var(--text-tertiary);
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
     display: flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    transition: all var(--transition-fast);
-    position: relative;
+    transition: all 0.15s ease;
+    font-size: 14px;
 }
 
-.toolbar-btn svg {
+.titlebar-btn svg {
     width: 16px;
     height: 16px;
 }
 
-.toolbar-btn:hover {
+.titlebar-btn:hover {
     background-color: var(--bg-hover);
     color: var(--text-primary);
 }
 
-.toolbar-btn.active {
-    background-color: var(--bg-active);
-    color: var(--color-accent);
-}
-
-/* Setup specifically for the "Open" button */
-#open-file {
-    width: auto;
-    padding: 0 12px;
-    gap: 6px;
+/* File Name */
+.file-name {
     font-size: 13px;
+    color: var(--text-secondary);
     font-weight: 500;
+    max-width: 300px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: default;
+    padding: 2px 8px;
+    border-radius: 4px;
+    transition: background 0.15s;
 }
 
-#open-file svg {
-    width: 14px;
-    height: 14px;
+.file-name:hover {
+    background: var(--bg-hover);
+}
+
+/* Save Indicator */
+.save-indicator {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    margin-left: 4px;
+    opacity: 0;
+    transition: opacity 0.2s;
+}
+
+.save-indicator.unsaved {
+    background: #f59e0b;
+    opacity: 1;
+}
+
+/* Window Controls (Windows/Linux only) */
+.window-controls {
+    display: flex;
+    margin-left: 8px;
+}
+
+.window-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-tertiary);
+    width: 40px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background 0.1s;
+}
+
+.window-btn svg {
+    width: 10px;
+    height: 10px;
+}
+
+.window-btn:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.window-btn.close-btn:hover {
+    background: #e81123;
+    color: white;
+}
+
+/* Hide window controls on macOS */
+.platform-darwin .window-controls {
+    display: none;
 }
 
 /* ----------------------
-   Sidebar (Outline)
+   Sidebar
    ---------------------- */
 .sidebar {
-    width: var(--sidebar-width);
+    width: 220px;
     background-color: var(--bg-sidebar);
-    border-right: 1px solid transparent;
     height: 100%;
     display: flex;
     flex-direction: column;
-    transition: transform var(--transition-bounce), margin var(--transition-bounce), opacity var(--transition-normal);
+    transition: width 0.2s ease, opacity 0.2s ease;
     overflow: hidden;
-    z-index: 10;
+    flex-shrink: 0;
+    border-right: 1px solid var(--bg-hover);
 }
 
 .sidebar.collapsed {
-    margin-left: calc(var(--sidebar-width) * -1);
+    width: 0;
     opacity: 0;
-    pointer-events: none;
+    border-right: none;
 }
 
-.sidebar-header {
-    padding: 24px 20px 12px;
-    flex-shrink: 0;
+/* Sidebar Tabs */
+.sidebar-tabs {
+    display: flex;
+    padding: 8px;
+    gap: 4px;
+    border-bottom: 1px solid var(--bg-hover);
 }
 
-.sidebar-header h3 {
-    font-size: 12px;
-    text-transform: uppercase;
-    letter-spacing: 1px;
+.sidebar-tab {
+    flex: 1;
+    background: transparent;
+    border: none;
     color: var(--text-tertiary);
-    font-weight: 600;
+    padding: 6px;
+    border-radius: 6px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s;
 }
 
-.outline {
+.sidebar-tab svg {
+    width: 16px;
+    height: 16px;
+}
+
+.sidebar-tab:hover {
+    background: var(--bg-hover);
+    color: var(--text-secondary);
+}
+
+.sidebar-tab.active {
+    background: var(--bg-active);
+    color: var(--text-primary);
+}
+
+/* Sidebar Panels */
+.sidebar-panel {
     flex: 1;
     overflow-y: auto;
-    padding: 0 12px 24px;
+    display: none;
+}
+
+.sidebar-panel.active {
+    display: block;
+}
+
+/* Outline */
+.outline {
+    padding: 8px;
 }
 
 .outline-empty {
     padding: 20px;
     color: var(--text-tertiary);
-    font-size: 13px;
+    font-size: 12px;
     text-align: center;
 }
 
-/* Outline List */
 .outline-list {
     list-style: none;
 }
 
 .outline-item {
-    display: flex;
-    align-items: center;
-    padding: 6px 8px;
+    display: block;
+    padding: 6px 12px;
     margin-bottom: 2px;
-    border-radius: var(--radius-md);
+    border-radius: 6px;
     cursor: pointer;
     font-size: 13px;
     color: var(--text-secondary);
-    transition: all var(--transition-fast);
+    transition: all 0.15s;
     line-height: 1.4;
+    text-overflow: ellipsis;
+    overflow: hidden;
+    white-space: nowrap;
 }
 
 .outline-item:hover {
@@ -168,12 +249,59 @@
 .outline-item.active {
     background-color: var(--bg-active);
     color: var(--color-accent);
+}
+
+/* File Tree */
+.filetree {
+    padding: 8px;
+    font-size: 13px;
+}
+
+.filetree-empty {
+    padding: 20px;
+    color: var(--text-tertiary);
+    font-size: 12px;
+    text-align: center;
+}
+
+.filetree-item {
+    display: flex;
+    align-items: center;
+    padding: 4px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    color: var(--text-secondary);
+    transition: background 0.1s;
+}
+
+.filetree-item:hover {
+    background: var(--bg-hover);
+}
+
+.filetree-item.active {
+    background: var(--bg-active);
+    color: var(--text-primary);
+}
+
+.filetree-item.directory {
     font-weight: 500;
 }
 
-.outline-marker {
-    display: none;
-    /* Can be enabled for a more visual tree connection */
+.filetree-icon {
+    width: 16px;
+    height: 16px;
+    margin-right: 6px;
+    flex-shrink: 0;
+}
+
+.filetree-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.filetree-children {
+    padding-left: 16px;
 }
 
 /* ----------------------
@@ -182,123 +310,36 @@
 .content-area {
     flex: 1;
     overflow-y: auto;
+    overflow-x: hidden;
     padding: 40px 60px 100px;
-    /* Typora-like generous padding */
     scroll-behavior: smooth;
-    position: relative;
     background-color: var(--bg-body);
 }
 
-/* Focus Mode */
-.content-area.focus-mode>* {
-    opacity: 0.3;
-    /* Fade out everything */
-    transition: opacity var(--transition-normal);
-    filter: blur(0.5px);
+/* 滚动条样式 - 悬停时显示 */
+.content-area::-webkit-scrollbar {
+    width: 8px;
 }
 
-.content-area.focus-mode>.focused,
-.content-area.focus-mode>.focused * {
-    opacity: 1;
-    filter: none;
-}
-
-/* Typewriter Mode is handled via scroll logic in JS, but we add some padding */
-.content-area.typewriter-mode {
-    padding-bottom: 50vh;
-    /* Allow scrolling last line to middle */
-}
-
-/* Empty State */
-.empty-state {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    height: 80%;
-    color: var(--text-secondary);
-    animation: slideUp 0.5s ease-out;
-}
-
-@keyframes slideUp {
-    from {
-        opacity: 0;
-        transform: translateY(20px);
-    }
-
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
-}
-
-.empty-icon {
-    font-size: 64px;
-    margin-bottom: 24px;
-    opacity: 0.5;
-}
-
-.empty-state h2 {
-    font-size: 24px;
-    font-weight: 600;
-    color: var(--text-primary);
-    margin-bottom: 12px;
-}
-
-.shortcuts-hint {
-    display: flex;
-    gap: 16px;
-    margin-top: 32px;
-    font-size: 13px;
-    color: var(--text-tertiary);
-}
-
-kbd {
-    background: var(--bg-active);
-    padding: 2px 6px;
-    border-radius: 4px;
-    font-family: var(--font-mono);
-    font-size: 11px;
-    margin: 0 2px;
-    border: 1px solid var(--bg-hover);
-}
-
-/* ----------------------
-   Mode Toggle (阅读/编辑)
-   ---------------------- */
-.mode-toggle {
-    display: flex;
-    background: var(--bg-hover);
-    border-radius: var(--radius-md);
-    padding: 2px;
-    margin-left: 12px;
-}
-
-.mode-btn {
+.content-area::-webkit-scrollbar-track {
     background: transparent;
-    border: none;
-    color: var(--text-secondary);
-    font-size: 12px;
-    font-weight: 500;
-    padding: 4px 12px;
-    border-radius: calc(var(--radius-md) - 2px);
-    cursor: pointer;
-    transition: all var(--transition-fast);
 }
 
-.mode-btn:hover {
-    color: var(--text-primary);
+.content-area::-webkit-scrollbar-thumb {
+    background: transparent;
+    border-radius: 4px;
+    transition: background 0.2s;
 }
 
-.mode-btn.active {
-    background: var(--bg-body);
-    color: var(--color-accent);
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+.content-area:hover::-webkit-scrollbar-thumb {
+    background: var(--text-tertiary);
 }
 
-/* ----------------------
-   Editor Area
-   ---------------------- */
+.content-area::-webkit-scrollbar-thumb:hover {
+    background: var(--text-secondary);
+}
+
+/* Editor Area */
 .editor-area {
     flex: 1;
     overflow: hidden;
@@ -312,82 +353,125 @@ kbd {
 
 .editor-area .cm-scroller {
     overflow: auto;
-    font-family: var(--font-serif);
+    padding: 40px 60px 100px;
 }
 
 /* ----------------------
    Status Bar
    ---------------------- */
 .statusbar {
-    height: 24px;
+    height: 22px;
     background: var(--bg-sidebar);
-    border-top: 1px solid var(--bg-hover);
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0 16px;
+    padding: 0 12px;
     font-size: 11px;
     color: var(--text-tertiary);
     flex-shrink: 0;
+    border-top: 1px solid var(--bg-hover);
 }
 
 .statusbar-left,
 .statusbar-right {
     display: flex;
     align-items: center;
-    gap: 16px;
+    gap: 12px;
 }
 
 .status-mode {
-    padding: 2px 8px;
+    padding: 1px 6px;
     background: var(--bg-hover);
     border-radius: 3px;
-    font-weight: 500;
 }
 
 /* ----------------------
-   Save Indicator
+   Slash Command Menu
    ---------------------- */
-.save-indicator {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    margin-left: 8px;
-    opacity: 0;
-    transition: opacity 0.2s;
+.slash-menu {
+    position: fixed;
+    background: var(--bg-body);
+    border: 1px solid var(--bg-hover);
+    border-radius: 8px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+    min-width: 200px;
+    max-width: 280px;
+    max-height: 300px;
+    overflow-y: auto;
+    z-index: 1000;
 }
 
-.save-indicator.unsaved {
-    background: var(--color-warning, #f59e0b);
-    opacity: 1;
+.slash-menu-list {
+    padding: 4px;
 }
 
-.save-indicator.saving {
-    background: var(--color-primary);
-    opacity: 1;
-    animation: pulse 1s infinite;
+.slash-menu-item {
+    display: flex;
+    align-items: center;
+    padding: 8px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    color: var(--text-primary);
+    transition: background 0.1s;
 }
 
-@keyframes pulse {
+.slash-menu-item:hover,
+.slash-menu-item.active {
+    background: var(--bg-hover);
+}
 
-    0%,
-    100% {
-        opacity: 1;
-    }
+.slash-menu-icon {
+    width: 20px;
+    margin-right: 10px;
+    color: var(--text-tertiary);
+}
 
-    50% {
-        opacity: 0.4;
-    }
+.slash-menu-label {
+    flex: 1;
+}
+
+.slash-menu-hint {
+    font-size: 11px;
+    color: var(--text-tertiary);
+    font-family: var(--font-mono);
 }
 
 /* ----------------------
    Mode Indicator
    ---------------------- */
-.mode-indicator .mode-icon {
+.mode-icon {
     font-size: 14px;
-    transition: transform 0.2s;
 }
 
-.mode-indicator:hover .mode-icon {
-    transform: scale(1.1);
+/* ----------------------
+   Empty State
+   ---------------------- */
+.empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: var(--text-tertiary);
+    padding: 40px;
+    text-align: center;
+}
+
+.empty-icon {
+    font-size: 48px;
+    margin-bottom: 16px;
+    opacity: 0.5;
+}
+
+.empty-state h2 {
+    font-size: 18px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    margin-bottom: 8px;
+}
+
+.empty-state p {
+    font-size: 13px;
+    color: var(--text-tertiary);
 }

@@ -1,6 +1,6 @@
 /**
- * App - 应用入口
- * 初始化所有模块，协调工作
+ * mditor v2.0 - 极简 Markdown 编辑器
+ * 主应用入口
  */
 class App {
     constructor() {
@@ -17,7 +17,32 @@ class App {
         // 编辑器实例
         this.editor = null;
         this.isEditMode = false;
-        this.currentContent = '';  // 当前文档的原始 Markdown
+        this.currentContent = '';
+        this.currentFilePath = null;
+        this.hasUnsavedChanges = false;
+
+        // 侧边栏状态: 'hidden' | 'outline' | 'filetree'
+        this.sidebarMode = 'outline';
+
+        // 斜杠命令
+        this.slashMenuVisible = false;
+        this.slashMenuIndex = 0;
+        this.slashCommands = [
+            { icon: 'H1', label: '标题 1', hint: '# ', action: () => this._insertText('# ') },
+            { icon: 'H2', label: '标题 2', hint: '## ', action: () => this._insertText('## ') },
+            { icon: 'H3', label: '标题 3', hint: '### ', action: () => this._insertText('### ') },
+            { icon: 'B', label: '粗体', hint: '**文本**', action: () => this._wrapText('**') },
+            { icon: 'I', label: '斜体', hint: '*文本*', action: () => this._wrapText('*') },
+            { icon: '`', label: '代码', hint: '`代码`', action: () => this._wrapText('`') },
+            { icon: '```', label: '代码块', hint: '```', action: () => this._insertText('```\n\n```', -4) },
+            { icon: '>', label: '引用', hint: '> ', action: () => this._insertText('> ') },
+            { icon: '•', label: '列表', hint: '- ', action: () => this._insertText('- ') },
+            { icon: '1.', label: '有序列表', hint: '1. ', action: () => this._insertText('1. ') },
+            { icon: '☑', label: '任务', hint: '- [ ] ', action: () => this._insertText('- [ ] ') },
+            { icon: '🔗', label: '链接', hint: '[文本](url)', action: () => this._insertText('[](url)', -6) },
+            { icon: '🖼', label: '图片', hint: '![](url)', action: () => this._insertText('![](url)', -6) },
+            { icon: '—', label: '分割线', hint: '---', action: () => this._insertText('\n---\n') },
+        ];
 
         // DOM 元素缓存
         this.elements = {};
@@ -27,16 +52,22 @@ class App {
      * 初始化应用
      */
     init() {
+        this._detectPlatform();
         this._cacheElements();
         this._initModules();
         this._bindEvents();
         this._applyTheme();
-        this._loadDemo();
-
-        // 检查是否有通过双击/命令行打开的文件（Electron 环境）
         this._checkInitialFile();
 
-        console.log('📝 Markdown Reader initialized');
+        console.log('📝 mditor v2.0 initialized');
+    }
+
+    /**
+     * 检测平台
+     */
+    _detectPlatform() {
+        const platform = window.electronAPI?.platform || 'web';
+        document.body.classList.add(`platform-${platform}`);
     }
 
     /**
@@ -46,21 +77,38 @@ class App {
         this.elements = {
             app: document.getElementById('app'),
             content: document.getElementById('content'),
-            outline: document.getElementById('outline'),
             sidebar: document.getElementById('sidebar'),
-            toolbar: document.getElementById('toolbar'),
+            outline: document.getElementById('outline'),
+            filetree: document.getElementById('filetree'),
             fileInput: document.getElementById('file-input'),
+
+            // 标题栏
             fileName: document.getElementById('file-name'),
+            saveIndicator: document.getElementById('save-indicator'),
             themeBtn: document.getElementById('theme-toggle'),
             sidebarBtn: document.getElementById('sidebar-toggle'),
-            // 编辑器相关
-            editorContainer: document.getElementById('editor'),
             modeToggleBtn: document.getElementById('mode-toggle'),
+            newFileBtn: document.getElementById('new-file-btn'),
+
+            // 窗口控制
+            winMinimize: document.getElementById('win-minimize'),
+            winMaximize: document.getElementById('win-maximize'),
+            winClose: document.getElementById('win-close'),
+
+            // 侧边栏标签
+            sidebarTabs: document.querySelectorAll('.sidebar-tab'),
+            outlinePanel: document.getElementById('outline-panel'),
+            filetreePanel: document.getElementById('filetree-panel'),
+
+            // 编辑器
+            editorContainer: document.getElementById('editor'),
+
             // 状态栏
-            statusbar: document.getElementById('statusbar'),
             wordCount: document.getElementById('word-count'),
             currentMode: document.getElementById('current-mode'),
-            saveIndicator: document.getElementById('save-indicator')
+
+            // 斜杠菜单
+            slashMenu: document.getElementById('slash-menu'),
         };
     }
 
@@ -77,51 +125,194 @@ class App {
      * 绑定事件
      */
     _bindEvents() {
-        // 文件加载事件
+        // 文件事件
         this.eventBus.on(Events.FILE_LOADED, ({ content, fileName }) => {
             this._onFileLoaded(content, fileName);
         });
 
-        // 文件错误事件
         this.eventBus.on(Events.FILE_ERROR, ({ message }) => {
             this._showToast(message, 'error');
         });
 
-        // 大纲导航事件
         this.eventBus.on(Events.OUTLINE_NAVIGATE, (headingId) => {
             this.renderer.scrollToHeading(headingId);
         });
 
-        // 工具栏按钮
-        this._bindToolbarEvents();
-
-        // 键盘快捷键
+        // 按钮事件
+        this._bindTitlebarEvents();
         this._bindKeyboardShortcuts();
-
-        // Electron IPC 监听
-        this._bindElectronEvents();
+        this._bindWindowControls();
+        this._bindSidebarTabs();
     }
 
     /**
-     * 绑定 Electron IPC 事件
+     * 绑定标题栏事件
      */
-    _bindElectronEvents() {
-        if (!window.electronAPI) return;
+    _bindTitlebarEvents() {
+        // 主题切换
+        this.elements.themeBtn?.addEventListener('click', () => {
+            this._toggleTheme();
+        });
+
+        // 侧边栏切换
+        this.elements.sidebarBtn?.addEventListener('click', () => {
+            this._cycleSidebarMode();
+        });
+
+        // 模式切换
+        this.elements.modeToggleBtn?.addEventListener('click', () => {
+            this._setMode(this.isEditMode ? 'read' : 'edit');
+        });
 
         // 新建文件
-        window.electronAPI.onNewFile?.(() => {
+        this.elements.newFileBtn?.addEventListener('click', () => {
             this._newFile();
         });
+    }
 
-        // 保存请求（来自菜单 Ctrl+S）
-        window.electronAPI.onRequestSave?.((forceDialog) => {
-            this._saveFile(forceDialog);
+    /**
+     * 绑定窗口控制（无边框窗口）
+     */
+    _bindWindowControls() {
+        if (!window.electronAPI) return;
+
+        this.elements.winMinimize?.addEventListener('click', () => {
+            window.electronAPI.windowMinimize();
         });
 
-        // 另存为请求
-        window.electronAPI.onRequestSaveAs?.(() => {
-            this._saveFile(true);
+        this.elements.winMaximize?.addEventListener('click', () => {
+            window.electronAPI.windowMaximize();
         });
+
+        this.elements.winClose?.addEventListener('click', () => {
+            window.electronAPI.windowClose();
+        });
+    }
+
+    /**
+     * 绑定侧边栏标签切换
+     */
+    _bindSidebarTabs() {
+        this.elements.sidebarTabs?.forEach(tab => {
+            tab.addEventListener('click', () => {
+                const panel = tab.dataset.panel;
+                this._setSidebarPanel(panel);
+            });
+        });
+    }
+
+    /**
+     * 绑定键盘快捷键
+     */
+    _bindKeyboardShortcuts() {
+        document.addEventListener('keydown', (e) => {
+            // Ctrl+\ 循环侧边栏模式
+            if (e.ctrlKey && e.key === '\\') {
+                e.preventDefault();
+                this._cycleSidebarMode();
+            }
+
+            // Ctrl+E 切换模式
+            if (e.ctrlKey && !e.shiftKey && e.key === 'e') {
+                e.preventDefault();
+                this._setMode(this.isEditMode ? 'read' : 'edit');
+            }
+
+            // Ctrl+N 新建
+            if (e.ctrlKey && e.key === 'n') {
+                e.preventDefault();
+                if (window.electronAPI) {
+                    window.electronAPI.newWindow();
+                } else {
+                    this._newFile();
+                }
+            }
+
+            // Ctrl+O 打开
+            if (e.ctrlKey && e.key === 'o') {
+                e.preventDefault();
+                this._openFile();
+            }
+
+            // Ctrl+S 保存
+            if (e.ctrlKey && !e.shiftKey && e.key === 's') {
+                e.preventDefault();
+                this._saveFile(false);
+            }
+
+            // Ctrl+Shift+S 另存为
+            if (e.ctrlKey && e.shiftKey && e.key === 'S') {
+                e.preventDefault();
+                this._saveFile(true);
+            }
+        });
+    }
+
+    /**
+     * 检查启动时打开的文件
+     */
+    async _checkInitialFile() {
+        if (window.electronAPI?.getInitialFile) {
+            try {
+                const data = await window.electronAPI.getInitialFile();
+                if (data && data.content) {
+                    this.currentFilePath = data.filePath;
+                    this._onFileLoaded(data.content, data.fileName);
+                    this._loadFileTree();
+                    return;
+                }
+            } catch (e) {
+                console.error('Failed to get initial file:', e);
+            }
+        }
+        // 无初始文件，显示欢迎页
+        this._loadDemo();
+    }
+
+    /**
+     * 文件加载处理
+     */
+    _onFileLoaded(content, fileName) {
+        this.currentContent = content;
+        this.hasUnsavedChanges = false;
+
+        // 更新文件名
+        if (this.elements.fileName) {
+            this.elements.fileName.textContent = fileName;
+        }
+
+        this._updateSaveIndicator();
+        this._updateWordCount(content);
+
+        // 解析并渲染
+        const html = this.parser.parse(content);
+        const outline = this.parser.extractOutline(content);
+
+        this.eventBus.emit(Events.CONTENT_PARSED, { html, outline });
+        this.eventBus.emit(Events.OUTLINE_UPDATED, outline);
+
+        // 同步编辑器
+        if (this.editor && this.isEditMode) {
+            this.editor.setValue(content);
+        }
+
+        this._showToast(`已加载: ${fileName}`, 'success');
+    }
+
+    /**
+     * 打开文件
+     */
+    async _openFile() {
+        if (window.electronAPI?.openFileDialog) {
+            const result = await window.electronAPI.openFileDialog();
+            if (result && result.content) {
+                this.currentFilePath = result.filePath;
+                this._onFileLoaded(result.content, result.fileName);
+                this._loadFileTree();
+            }
+        } else {
+            this.fileHandler.openFilePicker();
+        }
     }
 
     /**
@@ -129,24 +320,22 @@ class App {
      */
     _newFile() {
         this.currentContent = '';
-        this.currentFileName = '未命名.md';
+        this.currentFilePath = null;
 
         if (this.elements.fileName) {
-            this.elements.fileName.textContent = this.currentFileName;
+            this.elements.fileName.textContent = '未命名';
         }
 
-        // 清空阅读区
         this.renderer.clear?.();
         this.outline.clear?.();
 
-        // 如果在编辑模式，清空编辑器
         if (this.editor) {
             this.editor.setValue('');
         }
 
-        // 默认进入编辑模式
         this._setMode('edit');
-        this._markUnsaved();
+        this.hasUnsavedChanges = true;
+        this._updateSaveIndicator();
         this._updateWordCount('');
     }
 
@@ -159,20 +348,23 @@ class App {
             return;
         }
 
-        // 获取最新内容
         const content = this.editor ? this.editor.getValue() : this.currentContent;
 
         try {
             const result = await window.electronAPI.saveFile(content, forceDialog);
 
             if (result.success) {
-                this.currentFileName = result.fileName;
+                this.currentFilePath = result.filePath;
+                this.hasUnsavedChanges = false;
+
                 if (this.elements.fileName) {
                     this.elements.fileName.textContent = result.fileName;
                 }
-                this._markSaved();
+
+                this._updateSaveIndicator();
                 this._showToast(`已保存: ${result.fileName}`, 'success');
-            } else if (!result.canceled) {
+                this._loadFileTree();
+            } else if (result.error) {
                 this._showToast(`保存失败: ${result.error}`, 'error');
             }
         } catch (e) {
@@ -181,122 +373,123 @@ class App {
     }
 
     /**
-     * 绑定工具栏事件
+     * 加载文件树
      */
-    _bindToolbarEvents() {
-        // 主题切换
-        this.elements.themeBtn?.addEventListener('click', () => {
-            this._toggleTheme();
-        });
+    async _loadFileTree() {
+        if (!window.electronAPI?.getCurrentDirectory) return;
 
-        // 侧边栏切换
-        this.elements.sidebarBtn?.addEventListener('click', () => {
-            this._toggleSidebar();
-        });
-
-        // 模式切换（单按钮）
-        this.elements.modeToggleBtn?.addEventListener('click', () => {
-            this._setMode(this.isEditMode ? 'read' : 'edit');
-        });
-    }
-
-    /**
-     * 绑定键盘快捷键
-     */
-    _bindKeyboardShortcuts() {
-        document.addEventListener('keydown', (e) => {
-            // Ctrl+\ 切换侧边栏
-            if (e.ctrlKey && e.key === '\\') {
-                e.preventDefault();
-                this._toggleSidebar();
-            }
-
-            // Ctrl+Shift+F 切换 Focus Mode
-            if (e.ctrlKey && e.shiftKey && e.key === 'F') {
-                e.preventDefault();
-                this._toggleFocusMode();
-            }
-
-            // Ctrl+Shift+T 切换 Typewriter Mode
-            if (e.ctrlKey && e.shiftKey && e.key === 'T') {
-                e.preventDefault();
-                this._toggleTypewriterMode();
-            }
-
-            // Ctrl+E 切换编辑/阅读模式
-            if (e.ctrlKey && !e.shiftKey && e.key === 'e') {
-                e.preventDefault();
-                this._setMode(this.isEditMode ? 'read' : 'edit');
-            }
-        });
-    }
-
-    /**
-     * 文件加载处理
-     */
-    _onFileLoaded(content, fileName) {
-        // 存储原始内容（供编辑器使用）
-        this.currentContent = content;
-
-        // 更新文件名显示
-        if (this.elements.fileName) {
-            this.elements.fileName.textContent = fileName;
+        const dirPath = await window.electronAPI.getCurrentDirectory();
+        if (!dirPath) {
+            this.elements.filetree.innerHTML = '<div class="filetree-empty">打开文件后显示目录</div>';
+            return;
         }
 
-        // 解析 Markdown
-        const html = this.parser.parse(content);
-        const outline = this.parser.extractOutline(content);
-
-        // 更新状态
-        this.state.batch({
-            'document.html': html,
-            'document.outline': outline
-        });
-
-        // 发布事件
-        this.eventBus.emit(Events.CONTENT_PARSED, { html, outline });
-        this.eventBus.emit(Events.OUTLINE_UPDATED, outline);
-
-        // 如果编辑器已初始化且在编辑模式，同步内容
-        if (this.editor && this.isEditMode) {
-            this.editor.setValue(content);
-        }
-
-        this._showToast(`已加载: ${fileName}`, 'success');
+        const items = await window.electronAPI.readDirectory(dirPath);
+        this._renderFileTree(items, this.elements.filetree);
     }
 
     /**
-     * 检查并加载启动时打开的文件（Electron 拉取模式）
+     * 渲染文件树
      */
-    async _checkInitialFile() {
-        if (window.electronAPI && window.electronAPI.getInitialFile) {
-            try {
-                const data = await window.electronAPI.getInitialFile();
-                if (data && data.content) {
-                    this._onFileLoaded(data.content, data.fileName);
+    _renderFileTree(items, container) {
+        container.innerHTML = '';
+
+        items.forEach(item => {
+            const el = document.createElement('div');
+            el.className = `filetree-item ${item.isDirectory ? 'directory' : ''}`;
+
+            // 只显示 Markdown 文件和文件夹
+            if (!item.isDirectory && !['.md', '.markdown', '.txt'].includes(item.ext)) {
+                return;
+            }
+
+            el.innerHTML = `
+                <span class="filetree-icon">${item.isDirectory ? '📁' : '📄'}</span>
+                <span class="filetree-name">${item.name}</span>
+            `;
+
+            el.addEventListener('click', async () => {
+                if (item.isDirectory) {
+                    // 展开/收起文件夹
+                    const children = el.querySelector('.filetree-children');
+                    if (children) {
+                        children.remove();
+                    } else {
+                        const subItems = await window.electronAPI.readDirectory(item.path);
+                        const childContainer = document.createElement('div');
+                        childContainer.className = 'filetree-children';
+                        this._renderFileTree(subItems, childContainer);
+                        el.appendChild(childContainer);
+                    }
+                } else {
+                    // 打开文件
+                    const data = await window.electronAPI.readFile(item.path);
+                    if (data && data.content) {
+                        this.currentFilePath = data.filePath;
+                        this._onFileLoaded(data.content, data.fileName);
+                    }
                 }
-            } catch (e) {
-                console.error('Failed to get initial file:', e);
-            }
+            });
+
+            container.appendChild(el);
+        });
+    }
+
+    /**
+     * 循环侧边栏模式
+     */
+    _cycleSidebarMode() {
+        const modes = ['hidden', 'outline', 'filetree'];
+        const currentIndex = modes.indexOf(this.sidebarMode);
+        this.sidebarMode = modes[(currentIndex + 1) % modes.length];
+        this._applySidebarMode();
+    }
+
+    /**
+     * 应用侧边栏模式
+     */
+    _applySidebarMode() {
+        if (this.sidebarMode === 'hidden') {
+            this.elements.sidebar?.classList.add('collapsed');
+        } else {
+            this.elements.sidebar?.classList.remove('collapsed');
+            this._setSidebarPanel(this.sidebarMode);
         }
     }
 
     /**
-     * 设置模式（阅读/编辑）
+     * 设置侧边栏面板
+     */
+    _setSidebarPanel(panel) {
+        if (panel !== 'outline' && panel !== 'filetree') return;
+        this.sidebarMode = panel;
+
+        // 更新标签
+        this.elements.sidebarTabs?.forEach(tab => {
+            tab.classList.toggle('active', tab.dataset.panel === panel);
+        });
+
+        // 更新面板
+        this.elements.outlinePanel?.classList.toggle('active', panel === 'outline');
+        this.elements.filetreePanel?.classList.toggle('active', panel === 'filetree');
+
+        // 加载文件树
+        if (panel === 'filetree') {
+            this._loadFileTree();
+        }
+    }
+
+    /**
+     * 设置模式
      */
     _setMode(mode) {
         if (mode === 'edit' && !this.isEditMode) {
-            // 切换到编辑模式
             this.isEditMode = true;
-
-            // 更新 UI
             this._updateModeUI();
 
-            // 隐藏阅读区，显示编辑区
             this.elements.content.style.display = 'none';
             this.elements.editorContainer.style.display = 'block';
 
-            // 初始化或更新编辑器
             if (!this.editor && window.MditorEditor) {
                 this.editor = new window.MditorEditor();
                 const isDark = this.state.get('ui.theme') === 'dark';
@@ -304,9 +497,9 @@ class App {
                     isDark,
                     onChange: (content) => {
                         this.currentContent = content;
-                        this._markUnsaved();
+                        this.hasUnsavedChanges = true;
+                        this._updateSaveIndicator();
                         this._updateWordCount(content);
-                        // 实时更新大纲
                         const outline = this.parser.extractOutline(content);
                         this.eventBus.emit(Events.OUTLINE_UPDATED, outline);
                     }
@@ -318,31 +511,25 @@ class App {
             this.editor?.focus();
 
         } else if (mode === 'read' && this.isEditMode) {
-            // 切换到阅读模式
             this.isEditMode = false;
-
-            // 更新 UI
             this._updateModeUI();
 
-            // 从编辑器获取最新内容
             if (this.editor) {
                 this.currentContent = this.editor.getValue();
             }
 
-            // 重新渲染
             const html = this.parser.parse(this.currentContent);
             const outline = this.parser.extractOutline(this.currentContent);
             this.eventBus.emit(Events.CONTENT_PARSED, { html, outline });
             this.eventBus.emit(Events.OUTLINE_UPDATED, outline);
 
-            // 隐藏编辑区，显示阅读区
             this.elements.editorContainer.style.display = 'none';
             this.elements.content.style.display = 'block';
         }
     }
 
     /**
-     * 更新模式相关 UI
+     * 更新模式 UI
      */
     _updateModeUI() {
         const modeIcon = this.elements.modeToggleBtn?.querySelector('.mode-icon');
@@ -350,7 +537,16 @@ class App {
             modeIcon.textContent = this.isEditMode ? '✏️' : '📖';
         }
         if (this.elements.currentMode) {
-            this.elements.currentMode.textContent = this.isEditMode ? '编辑模式' : '阅读模式';
+            this.elements.currentMode.textContent = this.isEditMode ? '编辑' : '阅读';
+        }
+    }
+
+    /**
+     * 更新保存指示器
+     */
+    _updateSaveIndicator() {
+        if (this.elements.saveIndicator) {
+            this.elements.saveIndicator.classList.toggle('unsaved', this.hasUnsavedChanges);
         }
     }
 
@@ -359,28 +555,11 @@ class App {
      */
     _updateWordCount(content) {
         if (this.elements.wordCount) {
-            // 统计中文字符和英文单词
             const chineseChars = (content.match(/[\u4e00-\u9fa5]/g) || []).length;
             const englishWords = (content.match(/[a-zA-Z]+/g) || []).length;
             const total = chineseChars + englishWords;
             this.elements.wordCount.textContent = `${total} 字`;
         }
-    }
-
-    /**
-     * 标记未保存状态
-     */
-    _markUnsaved() {
-        this.hasUnsavedChanges = true;
-        this.elements.saveIndicator?.classList.add('unsaved');
-    }
-
-    /**
-     * 清除未保存状态
-     */
-    _markSaved() {
-        this.hasUnsavedChanges = false;
-        this.elements.saveIndicator?.classList.remove('unsaved');
     }
 
     /**
@@ -394,7 +573,6 @@ class App {
         this.state.persistTheme();
         this._applyTheme();
 
-        // 同步编辑器主题
         if (this.editor) {
             this.editor.setDarkMode(next === 'dark');
         }
@@ -407,76 +585,19 @@ class App {
      */
     _applyTheme() {
         const theme = this.state.get('ui.theme');
-        document.documentElement.setAttribute('data-theme', theme);
+        document.body.dataset.theme = theme;
 
-        // 更新按钮图标
         if (this.elements.themeBtn) {
-            this.elements.themeBtn.innerHTML = theme === 'dark' ? '☀️' : '🌙';
-            this.elements.themeBtn.title = theme === 'dark' ? '切换到亮色' : '切换到暗色';
+            this.elements.themeBtn.textContent = theme === 'dark' ? '☀️' : '🌙';
         }
-    }
 
-    /**
-     * 切换侧边栏
-     */
-    _toggleSidebar() {
-        const visible = !this.state.get('ui.sidebarVisible');
-        this.state.set('ui.sidebarVisible', visible);
-
-        this.elements.sidebar?.classList.toggle('collapsed', !visible);
-        this.elements.sidebarBtn?.classList.toggle('active', visible);
-
-        this.eventBus.emit(Events.SIDEBAR_TOGGLE, visible);
-    }
-
-    /**
-     * 切换 Focus Mode
-     */
-    _toggleFocusMode() {
-        const enabled = !this.state.get('ui.focusMode');
-        this.state.set('ui.focusMode', enabled);
-
-        this.elements.focusBtn?.classList.toggle('active', enabled);
-        this.eventBus.emit(Events.FOCUS_MODE_TOGGLE, enabled);
-
-        this._showToast(enabled ? 'Focus Mode 开启' : 'Focus Mode 关闭', 'info');
-    }
-
-    /**
-     * 切换 Typewriter Mode
-     */
-    _toggleTypewriterMode() {
-        const enabled = !this.state.get('ui.typewriterMode');
-        this.state.set('ui.typewriterMode', enabled);
-
-        this.elements.typewriterBtn?.classList.toggle('active', enabled);
-        this.elements.content?.classList.toggle('typewriter-mode', enabled);
-
-        this.eventBus.emit(Events.TYPEWRITER_MODE_TOGGLE, enabled);
-
-        this._showToast(enabled ? 'Typewriter Mode 开启' : 'Typewriter Mode 关闭', 'info');
-    }
-
-    /**
-     * 显示 Toast 提示
-     */
-    _showToast(message, type = 'info') {
-        const toast = document.createElement('div');
-        toast.className = `toast toast-${type}`;
-        toast.textContent = message;
-
-        document.body.appendChild(toast);
-
-        // 触发动画
-        requestAnimationFrame(() => {
-            toast.classList.add('show');
-        });
-
-        // 自动移除
-        setTimeout(() => {
-            toast.classList.remove('show');
-            setTimeout(() => toast.remove(), 300);
-        }, 2500);
+        // 切换代码高亮主题
+        const hljsTheme = document.getElementById('hljs-theme');
+        if (hljsTheme) {
+            hljsTheme.href = theme === 'dark'
+                ? 'https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css'
+                : 'https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css';
+        }
     }
 
     /**
@@ -485,57 +606,82 @@ class App {
     _loadDemo() {
         const demoContent = `# 欢迎使用 mditor
 
-这是一个优雅的 Markdown 阅读器。
+一个极简的 Markdown 编辑器。
 
-## ✨ 特性
-
-- 🎨 **优雅界面** - 极简设计，专注阅读
-- 🌓 **主题切换** - 支持亮色/暗色模式
-- 📑 **大纲导航** - 侧边栏目录快速跳转
-- 🎯 **Focus Mode** - 高亮当前段落
-- 📁 **拖拽加载** - 拖入 .md 文件即可阅读
-
-## 🚀 开始使用
-
-1. 拖拽一个 \`.md\` 文件到页面
-2. 或点击工具栏的 **打开** 按钮选择文件
-3. 使用 \`Ctrl+O\` 快速打开
-
-## ⌨️ 快捷键
+## 快捷键
 
 | 快捷键 | 功能 |
 |--------|------|
-| \`Ctrl+O\` | 打开文件 |
-| \`Ctrl+\\\` | 切换侧边栏 |
-| \`Ctrl+Shift+F\` | Focus Mode |
-| \`Ctrl+Shift+T\` | Typewriter Mode |
+| Ctrl+N | 新建窗口 |
+| Ctrl+O | 打开文件 |
+| Ctrl+S | 保存 |
+| Ctrl+E | 切换编辑/阅读 |
+| Ctrl+\\ | 切换侧边栏 |
 
-## 💻 代码示例
+## 开始使用
 
-\`\`\`javascript
-// 事件驱动架构
-eventBus.on('file:loaded', (content) => {
-  const html = parser.parse(content);
-  renderer.render(html);
-});
-\`\`\`
+- 拖拽 \`.md\` 文件到窗口
+- 或点击 Ctrl+O 打开文件
+- 双击 md 文件直接打开
 
-## 📝 Todo
-
-- [x] Markdown 渲染
-- [x] 主题切换
-- [x] 大纲导航
-- [ ] 编辑功能 (P1)
-
----
-
-> 💡 **提示**: 试试点击右上角的主题按钮切换暗色模式！
+> 享受写作的乐趣！
 `;
+        this._onFileLoaded(demoContent, '欢迎');
+    }
 
-        this.eventBus.emit(Events.FILE_LOADED, {
-            content: demoContent,
-            fileName: '欢迎.md'
-        });
+    /**
+     * 显示 Toast
+     */
+    _showToast(message, type = 'info') {
+        // 简单 toast 实现
+        const toast = document.createElement('div');
+        toast.className = `toast toast-${type}`;
+        toast.textContent = message;
+        toast.style.cssText = `
+            position: fixed;
+            bottom: 40px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 8px 16px;
+            background: var(--bg-body);
+            border: 1px solid var(--bg-hover);
+            border-radius: 6px;
+            font-size: 13px;
+            z-index: 9999;
+            animation: fadeIn 0.2s;
+        `;
+        document.body.appendChild(toast);
+        setTimeout(() => toast.remove(), 2000);
+    }
+
+    /**
+     * 插入文本
+     */
+    _insertText(text, cursorOffset = 0) {
+        if (this.editor && this.editor.view) {
+            const { from } = this.editor.view.state.selection.main;
+            this.editor.view.dispatch({
+                changes: { from, insert: text },
+                selection: { anchor: from + text.length + cursorOffset }
+            });
+            this.editor.focus();
+        }
+    }
+
+    /**
+     * 包裹文本
+     */
+    _wrapText(wrapper) {
+        if (this.editor && this.editor.view) {
+            const { from, to } = this.editor.view.state.selection.main;
+            const selected = this.editor.view.state.sliceDoc(from, to);
+            const newText = selected ? `${wrapper}${selected}${wrapper}` : `${wrapper}文本${wrapper}`;
+            this.editor.view.dispatch({
+                changes: { from, to, insert: newText },
+                selection: { anchor: from + wrapper.length, head: from + newText.length - wrapper.length }
+            });
+            this.editor.focus();
+        }
     }
 }
 

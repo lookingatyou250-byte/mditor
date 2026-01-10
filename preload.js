@@ -2,28 +2,48 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 // 暴露安全的 API 给渲染进程
 contextBridge.exposeInMainWorld('electronAPI', {
-    // 监听文件打开事件（用于菜单打开、拖拽等）
-    onFileOpened: (callback) => {
-        ipcRenderer.on('file-opened', (event, data) => callback(data));
-    },
-
-    // 主动获取启动时打开的文件（拉取模式）
+    // ===== 文件操作 =====
+    // 获取启动时打开的文件
     getInitialFile: () => ipcRenderer.invoke('get-initial-file'),
+
+    // 打开文件对话框
+    openFileDialog: () => ipcRenderer.invoke('open-file-dialog'),
 
     // 保存文件
     saveFile: (content, forceDialog) => ipcRenderer.invoke('save-file', { content, forceDialog }),
 
-    // 监听新建文件请求
+    // 读取文件
+    readFile: (filePath) => ipcRenderer.invoke('read-file', filePath),
+
+    // ===== 文件树 =====
+    // 读取目录
+    readDirectory: (dirPath) => ipcRenderer.invoke('read-directory', dirPath),
+
+    // 获取当前文件所在目录
+    getCurrentDirectory: () => ipcRenderer.invoke('get-current-directory'),
+
+    // ===== 窗口控制（无边框窗口） =====
+    windowMinimize: () => ipcRenderer.send('window-minimize'),
+    windowMaximize: () => ipcRenderer.send('window-maximize'),
+    windowClose: () => ipcRenderer.send('window-close'),
+    isMaximized: () => ipcRenderer.invoke('is-maximized'),
+
+    // 新建窗口
+    newWindow: () => ipcRenderer.send('new-window'),
+
+    // ===== 事件监听 =====
+    onFileOpened: (callback) => {
+        ipcRenderer.on('file-opened', (event, data) => callback(data));
+    },
+
     onNewFile: (callback) => {
         ipcRenderer.on('new-file', () => callback());
     },
 
-    // 监听保存请求（来自菜单）
     onRequestSave: (callback) => {
         ipcRenderer.on('request-save', () => callback(false));
     },
 
-    // 监听另存为请求
     onRequestSaveAs: (callback) => {
         ipcRenderer.on('request-save-as', () => callback(true));
     },
