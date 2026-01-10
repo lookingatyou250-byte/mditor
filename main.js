@@ -30,15 +30,34 @@ const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
     app.quit();
 } else {
-    app.on('second-instance', (event, commandLine) => {
+    app.on('second-instance', (event, commandLine, workingDirectory) => {
+        // 聚焦窗口
         if (mainWindow) {
             if (mainWindow.isMinimized()) mainWindow.restore();
             mainWindow.focus();
+        }
 
-            // 从第二个实例的命令行中提取文件路径
-            const args = commandLine.slice(1);
-            const filePath = args.find(arg => !arg.startsWith('--') && !arg.startsWith('-'));
-            if (filePath && fs.existsSync(filePath)) {
+        // 从第二个实例的命令行中提取文件路径
+        // Windows 上通常是: ["exe路径", "文件路径"]
+        // 需要过滤掉 exe 路径和任何 flag
+        const args = commandLine.slice(1);
+        let filePath = args.find(arg => {
+            // 清理可能存在的引号
+            const cleaned = arg.replace(/^"|"$/g, '').trim();
+            return cleaned && !cleaned.startsWith('--') && !cleaned.startsWith('-');
+        });
+
+        if (filePath) {
+            // 清理路径中的引号
+            filePath = filePath.replace(/^"|"$/g, '').trim();
+
+            // 如果是相对路径，基于工作目录解析
+            if (!path.isAbsolute(filePath)) {
+                filePath = path.resolve(workingDirectory, filePath);
+            }
+
+            if (fs.existsSync(filePath)) {
+                currentFilePath = filePath;
                 sendFileToRenderer(filePath);
             }
         }
