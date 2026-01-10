@@ -24,6 +24,12 @@ class App {
         // 侧边栏状态: 'hidden' | 'outline' | 'filetree'
         this.sidebarMode = 'outline';
 
+        // 文件树根目录
+        this.filetreeRoot = null;
+
+        // 自动保存定时器
+        this.autoSaveTimer = null;
+
         // 斜杠命令
         this.slashMenuVisible = false;
         this.slashMenuIndex = 0;
@@ -374,64 +380,182 @@ class App {
 
     /**
      * 加载文件树
+     * @param {string} rootPath - 可选，指定根目录。不传则使用当前文件所在目录
      */
-    async _loadFileTree() {
-        if (!window.electronAPI?.getCurrentDirectory) return;
+    async _loadFileTree(rootPath = null) {
+        if (!window.electronAPI?.readDirectory) return;
 
-        const dirPath = await window.electronAPI.getCurrentDirectory();
-        if (!dirPath) {
+        // 确定根目录
+        if (rootPath) {
+            this.filetreeRoot = rootPath;
+        } else if (!this.filetreeRoot && this.currentFilePath) {
+            // 使用当前文件所在目录
+            const dir = await window.electronAPI.getCurrentDirectory();
+            this.filetreeRoot = dir;
+        }
+
+        if (!this.filetreeRoot) {
             this.elements.filetree.innerHTML = '<div class="filetree-empty">打开文件后显示目录</div>';
             return;
         }
 
-        const items = await window.electronAPI.readDirectory(dirPath);
-        this._renderFileTree(items, this.elements.filetree);
+        // 渲染文件树
+        this._renderFileTreeRoot();
     }
 
     /**
-     * 渲染文件树
+     * 渲染文件树根部（包含目录头和返回上级按钮）
      */
-    _renderFileTree(items, container) {
+    async _renderFileTreeRoot() {
+        const container = this.elements.filetree;
         container.innerHTML = '';
 
-        items.forEach(item => {
-            const el = document.createElement('div');
-            el.className = `filetree-item ${item.isDirectory ? 'directory' : ''}`;
+        // 目录头
+        const header = document.createElement('div');
+        header.className = 'filetree-header';
 
+        // 获取目录名
+        const dirName = this.filetreeRoot.split(/[/\\]/).pop() || this.filetreeRoot;
+
+        header.innerHTML = `
+            <button class="filetree-up-btn" title="返回上一级">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M9 14l-4-4 4-4"/>
+                    <path d="M5 10h11a4 4 0 110 8h-1"/>
+                </svg>
+            </button>
+            <span class="filetree-dirname" title="${this.filetreeRoot}">${dirName}</span>
+        `;
+
+        // 返回上级按钮事件
+        header.querySelector('.filetree-up-btn').addEventListener('click', async () => {
+            const parent = await window.electronAPI.getParentDirectory(this.filetreeRoot);
+            if (parent && parent !== this.filetreeRoot) {
+                this._loadFileTree(parent);
+            }
+        });
+
+        container.appendChild(header);
+
+        // 文件列表容器
+        const listContainer = document.createElement('div');
+        listContainer.className = 'filetree-list';
+        container.appendChild(listContainer);
+
+        // 加载目录内容
+        const items = await window.electronAPI.readDirectory(this.filetreeRoot);
+        this._renderFileTreeItems(items, listContainer, 0);
+    }
+
+    /**
+     * 渲染文件树项目（递归）
+     * @param {Array} items - 文件/目录列表
+     * @param {HTMLElement} container - 容器元素
+     * @param {number} depth - 嵌套深度
+     */
+    _renderFileTreeItems(items, container, depth) {
+        items.forEach(item => {
             // 只显示 Markdown 文件和文件夹
             if (!item.isDirectory && !['.md', '.markdown', '.txt'].includes(item.ext)) {
                 return;
             }
 
+            const el = document.createElement('div');
+            el.className = 'filetree-item';
+            if (item.isDirectory) el.classList.add('directory');
+
+            // 高亮当前打开的文件
+            if (this.currentFilePath && item.path === this.currentFilePath) {
+                el.classList.add('active');
+            }
+
+            // 缩进
+            const indent = depth * 16;
+
             el.innerHTML = `
-                <span class="filetree-icon">${item.isDirectory ? '📁' : '📄'}</span>
-                <span class="filetree-name">${item.name}</span>
+                <div class="filetree-item-content" style="padding-left: ${indent}px">
+                    <span class="filetree-toggle">${item.isDirectory ? '▶' : ''}</span>
+                    <span class="filetree-icon">${item.isDirectory ? '📁' : '📄'}</span>
+                    <span class="filetree-name">${item.name}</span>
+                </div>
             `;
 
-            el.addEventListener('click', async () => {
-                if (item.isDirectory) {
-                    // 展开/收起文件夹
-                    const children = el.querySelector('.filetree-children');
-                    if (children) {
-                        children.remove();
-                    } else {
+            const content = el.querySelector('.filetree-item-content');
+
+            if (item.isDirectory) {
+                // 文件夹点击事件
+                let expanded = false;
+                let childContainer = null;
+
+                content.addEventListener('click', async (e) => {
+                    e.stopPropagation();
+                    expanded = !expanded;
+
+                    const toggle = el.querySelector('.filetree-toggle');
+                    toggle.textContent = expanded ? '▼' : '▶';
+
+                    if (expanded) {
+                        // 展开
+                        if (!childContainer) {
+                            childContainer = document.createElement('div');
+                            childContainer.className = 'filetree-children';
+                            el.appendChild(childContainer);
+                        }
                         const subItems = await window.electronAPI.readDirectory(item.path);
-                        const childContainer = document.createElement('div');
-                        childContainer.className = 'filetree-children';
-                        this._renderFileTree(subItems, childContainer);
-                        el.appendChild(childContainer);
+                        childContainer.innerHTML = '';
+                        this._renderFileTreeItems(subItems, childContainer, depth + 1);
+                        childContainer.style.display = 'block';
+                    } else {
+                        // 收起
+                        if (childContainer) {
+                            childContainer.style.display = 'none';
+                        }
                     }
-                } else {
-                    // 打开文件
+                });
+
+                // 双击进入目录
+                content.addEventListener('dblclick', (e) => {
+                    e.stopPropagation();
+                    this._loadFileTree(item.path);
+                });
+            } else {
+                // 文件点击事件 - 打开文件
+                content.addEventListener('click', async () => {
                     const data = await window.electronAPI.readFile(item.path);
                     if (data && data.content) {
                         this.currentFilePath = data.filePath;
                         this._onFileLoaded(data.content, data.fileName);
+
+                        // 更新文件树根目录为新文件所在目录
+                        const newDir = await window.electronAPI.getCurrentDirectory();
+                        if (newDir && newDir !== this.filetreeRoot) {
+                            this.filetreeRoot = newDir;
+                            this._renderFileTreeRoot();
+                        } else {
+                            // 只更新高亮
+                            this._updateFileTreeHighlight();
+                        }
                     }
-                }
-            });
+                });
+            }
 
             container.appendChild(el);
+        });
+    }
+
+    /**
+     * 更新文件树高亮（不重新加载）
+     */
+    _updateFileTreeHighlight() {
+        const items = this.elements.filetree.querySelectorAll('.filetree-item');
+        items.forEach(item => {
+            const nameEl = item.querySelector('.filetree-name');
+            if (!nameEl) return;
+
+            // 简单的文件名匹配（不完美，但足够用）
+            const isActive = this.currentFilePath &&
+                this.currentFilePath.endsWith(nameEl.textContent);
+            item.classList.toggle('active', isActive);
         });
     }
 
@@ -497,11 +621,12 @@ class App {
                     isDark,
                     onChange: (content) => {
                         this.currentContent = content;
-                        this.hasUnsavedChanges = true;
-                        this._updateSaveIndicator();
                         this._updateWordCount(content);
                         const outline = this.parser.extractOutline(content);
                         this.eventBus.emit(Events.OUTLINE_UPDATED, outline);
+
+                        // 自动保存（2秒 debounce）
+                        this._scheduleAutoSave();
                     }
                 });
             } else if (this.editor) {
@@ -559,6 +684,46 @@ class App {
             const englishWords = (content.match(/[a-zA-Z]+/g) || []).length;
             const total = chineseChars + englishWords;
             this.elements.wordCount.textContent = `${total} 字`;
+        }
+    }
+
+    /**
+     * 调度自动保存（debounce 2秒）
+     */
+    _scheduleAutoSave() {
+        // 清除之前的定时器
+        if (this.autoSaveTimer) {
+            clearTimeout(this.autoSaveTimer);
+        }
+
+        // 显示保存中状态
+        this.elements.saveIndicator?.classList.add('saving');
+
+        // 2秒后自动保存
+        this.autoSaveTimer = setTimeout(() => {
+            this._autoSave();
+        }, 2000);
+    }
+
+    /**
+     * 执行自动保存（静默）
+     */
+    async _autoSave() {
+        if (!window.electronAPI?.saveFile) return;
+        if (!this.currentFilePath) return;  // 新文件不自动保存
+
+        const content = this.editor ? this.editor.getValue() : this.currentContent;
+
+        try {
+            const result = await window.electronAPI.saveFile(content, false);
+
+            if (result.success) {
+                this.elements.saveIndicator?.classList.remove('saving');
+                this._showToast('已自动保存', 'success');
+            }
+        } catch (e) {
+            this.elements.saveIndicator?.classList.remove('saving');
+            console.error('Auto-save failed:', e);
         }
     }
 

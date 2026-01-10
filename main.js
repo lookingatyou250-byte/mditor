@@ -220,6 +220,16 @@ ipcMain.handle('get-current-directory', async (event) => {
     return null;
 });
 
+// 获取父目录
+ipcMain.handle('get-parent-directory', async (event, dirPath) => {
+    const parent = path.dirname(dirPath);
+    // 检查是否到达根目录
+    if (parent === dirPath) {
+        return null;  // 已经是根目录
+    }
+    return parent;
+});
+
 // 窗口控制（最小化/最大化/关闭）
 ipcMain.on('window-minimize', (event) => {
     const win = BrowserWindow.fromWebContents(event.sender);

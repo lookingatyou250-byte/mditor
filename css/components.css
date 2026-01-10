@@ -253,8 +253,10 @@
 
 /* File Tree */
 .filetree {
-    padding: 8px;
     font-size: 13px;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
 }
 
 .filetree-empty {
@@ -264,7 +266,64 @@
     text-align: center;
 }
 
+/* File Tree Header */
+.filetree-header {
+    display: flex;
+    align-items: center;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--bg-hover);
+    background: var(--bg-body);
+    gap: 6px;
+    flex-shrink: 0;
+}
+
+.filetree-up-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-tertiary);
+    width: 24px;
+    height: 24px;
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s;
+}
+
+.filetree-up-btn:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.filetree-up-btn svg {
+    width: 14px;
+    height: 14px;
+}
+
+.filetree-dirname {
+    flex: 1;
+    font-weight: 600;
+    color: var(--text-primary);
+    font-size: 12px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* File Tree List */
+.filetree-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 4px 0;
+}
+
+/* File Tree Item */
 .filetree-item {
+    position: relative;
+}
+
+.filetree-item-content {
     display: flex;
     align-items: center;
     padding: 4px 8px;
@@ -272,24 +331,28 @@
     cursor: pointer;
     color: var(--text-secondary);
     transition: background 0.1s;
+    margin: 0 4px;
 }
 
-.filetree-item:hover {
+.filetree-item-content:hover {
     background: var(--bg-hover);
 }
 
-.filetree-item.active {
+.filetree-item.active>.filetree-item-content {
     background: var(--bg-active);
-    color: var(--text-primary);
+    color: var(--color-accent);
 }
 
-.filetree-item.directory {
-    font-weight: 500;
+.filetree-toggle {
+    width: 16px;
+    font-size: 10px;
+    color: var(--text-tertiary);
+    flex-shrink: 0;
+    text-align: center;
 }
 
 .filetree-icon {
-    width: 16px;
-    height: 16px;
+    font-size: 14px;
     margin-right: 6px;
     flex-shrink: 0;
 }
@@ -298,10 +361,12 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    flex: 1;
 }
 
 .filetree-children {
-    padding-left: 16px;
+    /* Inherits styling from parent - no explicit padding needed */
+    display: block;
 }
 
 /* ----------------------

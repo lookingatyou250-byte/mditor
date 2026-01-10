@@ -22,6 +22,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // 获取当前文件所在目录
     getCurrentDirectory: () => ipcRenderer.invoke('get-current-directory'),
 
+    // 获取父目录
+    getParentDirectory: (dirPath) => ipcRenderer.invoke('get-parent-directory', dirPath),
+
     // ===== 窗口控制（无边框窗口） =====
     windowMinimize: () => ipcRenderer.send('window-minimize'),
     windowMaximize: () => ipcRenderer.send('window-maximize'),
