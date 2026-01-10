@@ -8,5 +8,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
 
     // 平台检测
-    platform: process.platform
+    platform: process.platform,
+
+    // 通知主进程渲染器已就绪
+    sendAppReady: () => ipcRenderer.send('app-ready')
 });

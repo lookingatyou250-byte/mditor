@@ -204,40 +204,67 @@ app.on('open-file', (event, path) => {
     }
 });
 
+// 待打开的文件路径
+let pendingFile = null;
+
+// 监听渲染进程准备就绪
+ipcMain.on('app-ready', () => {
+    logToFile('Event: app-ready received from renderer');
+    if (pendingFile) {
+        logToFile(`Checking pending file: ${pendingFile}`);
+        sendFileToRenderer(pendingFile);
+        pendingFile = null; // 清空等待队列
+    }
+});
+
 // 读取并发送文件内容到渲染进程
 function openFile(filePath) {
-    logToFile(`Opening file: ${filePath}`);
-    if (!mainWindow || !filePath) {
-        logToFile('Open aborted: mainWindow is null or filePath is empty');
+    logToFile(`Processing openFile request: ${filePath}`);
+
+    // 如果没有窗口，或者文件路径为空，暂存路径等待窗口/应用就绪
+    if (!filePath) return;
+
+    // 暂存路径
+    pendingFile = filePath;
+
+    if (!mainWindow) {
+        logToFile('MainWindow not created yet, file cached in pendingFile');
         return;
     }
 
-    // 如果路径包含引号，去除它 (Windows 有时会传递带引号的路径)
+    // 尝试读取，但不再直接发送，而是更新 pendingFile
+    // 实际发送逻辑由 app-ready 触发，或者如果窗口已经加载完毕直接发送（双击文件时应用已运行的情况）
+    // 为了简化逻辑：我们只在 mainWindow.webContents 加载完成后发送
+
+    // 如果是二次打开（应用已运行），渲染进程肯定已经 ready 了，可以直接发
+    if (mainWindow.webContents && !mainWindow.webContents.isLoading()) {
+        logToFile('Window is loaded, sending file immediately');
+        sendFileToRenderer(filePath);
+        pendingFile = null;
+    } else {
+        logToFile('Window is loading, waiting for app-ready');
+    }
+}
+
+function sendFileToRenderer(filePath) {
+    // 如果路径包含引号，去除它
     let cleanPath = filePath.replace(/"/g, '');
 
     fs.readFile(cleanPath, 'utf-8', (err, content) => {
         if (err) {
             logToFile(`Error reading file: ${err.message}`);
-            console.error('Failed to open file:', err);
             return;
         }
 
-        // 确保文件路径是绝对路径
         const absolutePath = path.resolve(cleanPath);
-        logToFile(`File read success. Sending to renderer. Path: ${absolutePath}`);
+        logToFile(`Sending file content: ${absolutePath}`);
 
-        // 增加一个延时确保渲染进程完全加载了 preload 脚本和事件监听
-        // 有时候 ready-to-show 触发时，React/Vue/VanillaJS 可能还没执行到监听代码
-        setTimeout(() => {
-            mainWindow.webContents.send('file-opened', {
-                content,
-                fileName: path.basename(absolutePath),
-                filePath: absolutePath
-            });
-        }, 500);
+        mainWindow.webContents.send('file-opened', {
+            content,
+            fileName: path.basename(absolutePath),
+            filePath: absolutePath
+        });
 
-
-        // 将文件添加到最近打开文档记录 (OS层级)
         app.addRecentDocument(absolutePath);
     });
 }
