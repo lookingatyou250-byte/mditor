@@ -65,6 +65,15 @@ class MarkdownParser {
             return `<li>${text}</li>`;
         };
 
+        // 标题：使用与 extractOutline 一致的 ID 生成算法
+        renderer.heading = (text, level) => {
+            const id = 'heading-' + text.toLowerCase()
+                .replace(/<[^>]*>/g, '')  // 移除 HTML 标签
+                .replace(/[^\w\u4e00-\u9fa5]+/g, '-')
+                .replace(/^-|-$/g, '');
+            return `<h${level} id="${id}">${text}</h${level}>`;
+        };
+
         marked.use({ renderer });
     }
 
