@@ -262,9 +262,9 @@ class App {
      * 加载演示内容
      */
     _loadDemo() {
-        const demoContent = `# 欢迎使用 Markdown 阅读器
+        const demoContent = `# 欢迎使用 Mditor
 
-这是一个类似 **Typora** 的精美 Markdown 阅读器。
+这是一个优雅的 Markdown 阅读器。
 
 ## ✨ 特性
 
