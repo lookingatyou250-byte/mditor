@@ -1,0 +1,264 @@
+/* ----------------------
+   Toolbar
+   ---------------------- */
+.toolbar {
+    height: var(--toolbar-height);
+    background-color: var(--bg-body);
+    border-bottom: 1px solid var(--bg-hover);
+    /* 微妙的边框 */
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 16px;
+    flex-shrink: 0;
+    z-index: 20;
+    transition: background-color var(--transition-normal);
+}
+
+.toolbar-left,
+.toolbar-center,
+.toolbar-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.toolbar-center {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+.file-name {
+    font-size: 14px;
+    color: var(--text-secondary);
+    font-weight: 500;
+    margin-left: 8px;
+    max-width: 200px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    opacity: 0;
+    transform: translateY(5px);
+    animation: fadeIn 0.4s forwards;
+}
+
+@keyframes fadeIn {
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Toolbar Buttons */
+.toolbar-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    width: 32px;
+    height: 32px;
+    border-radius: var(--radius-md);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    position: relative;
+}
+
+.toolbar-btn svg {
+    width: 16px;
+    height: 16px;
+}
+
+.toolbar-btn:hover {
+    background-color: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.toolbar-btn.active {
+    background-color: var(--bg-active);
+    color: var(--color-accent);
+}
+
+/* Setup specifically for the "Open" button */
+#open-file {
+    width: auto;
+    padding: 0 12px;
+    gap: 6px;
+    font-size: 13px;
+    font-weight: 500;
+}
+
+#open-file svg {
+    width: 14px;
+    height: 14px;
+}
+
+/* ----------------------
+   Sidebar (Outline)
+   ---------------------- */
+.sidebar {
+    width: var(--sidebar-width);
+    background-color: var(--bg-sidebar);
+    border-right: 1px solid transparent;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    transition: transform var(--transition-bounce), margin var(--transition-bounce), opacity var(--transition-normal);
+    overflow: hidden;
+    z-index: 10;
+}
+
+.sidebar.collapsed {
+    margin-left: calc(var(--sidebar-width) * -1);
+    opacity: 0;
+    pointer-events: none;
+}
+
+.sidebar-header {
+    padding: 24px 20px 12px;
+    flex-shrink: 0;
+}
+
+.sidebar-header h3 {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-tertiary);
+    font-weight: 600;
+}
+
+.outline {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0 12px 24px;
+}
+
+.outline-empty {
+    padding: 20px;
+    color: var(--text-tertiary);
+    font-size: 13px;
+    text-align: center;
+}
+
+/* Outline List */
+.outline-list {
+    list-style: none;
+}
+
+.outline-item {
+    display: flex;
+    align-items: center;
+    padding: 6px 8px;
+    margin-bottom: 2px;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    font-size: 13px;
+    color: var(--text-secondary);
+    transition: all var(--transition-fast);
+    line-height: 1.4;
+}
+
+.outline-item:hover {
+    background-color: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.outline-item.active {
+    background-color: var(--bg-active);
+    color: var(--color-accent);
+    font-weight: 500;
+}
+
+.outline-marker {
+    display: none;
+    /* Can be enabled for a more visual tree connection */
+}
+
+/* ----------------------
+   Content Area
+   ---------------------- */
+.content-area {
+    flex: 1;
+    overflow-y: auto;
+    padding: 40px 60px 100px;
+    /* Typora-like generous padding */
+    scroll-behavior: smooth;
+    position: relative;
+    background-color: var(--bg-body);
+}
+
+/* Focus Mode */
+.content-area.focus-mode>* {
+    opacity: 0.3;
+    /* Fade out everything */
+    transition: opacity var(--transition-normal);
+    filter: blur(0.5px);
+}
+
+.content-area.focus-mode>.focused,
+.content-area.focus-mode>.focused * {
+    opacity: 1;
+    filter: none;
+}
+
+/* Typewriter Mode is handled via scroll logic in JS, but we add some padding */
+.content-area.typewriter-mode {
+    padding-bottom: 50vh;
+    /* Allow scrolling last line to middle */
+}
+
+/* Empty State */
+.empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 80%;
+    color: var(--text-secondary);
+    animation: slideUp 0.5s ease-out;
+}
+
+@keyframes slideUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.empty-icon {
+    font-size: 64px;
+    margin-bottom: 24px;
+    opacity: 0.5;
+}
+
+.empty-state h2 {
+    font-size: 24px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 12px;
+}
+
+.shortcuts-hint {
+    display: flex;
+    gap: 16px;
+    margin-top: 32px;
+    font-size: 13px;
+    color: var(--text-tertiary);
+}
+
+kbd {
+    background: var(--bg-active);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    margin: 0 2px;
+    border: 1px solid var(--bg-hover);
+}
