@@ -14,6 +14,11 @@ class App {
         this.outline = new Outline(this.eventBus, this.state);
         this.fileHandler = new FileHandler(this.eventBus, this.state);
 
+        // 编辑器实例
+        this.editor = null;
+        this.isEditMode = false;
+        this.currentContent = '';  // 当前文档的原始 Markdown
+
         // DOM 元素缓存
         this.elements = {};
     }
@@ -50,7 +55,11 @@ class App {
             sidebarBtn: document.getElementById('sidebar-toggle'),
             focusBtn: document.getElementById('focus-toggle'),
             typewriterBtn: document.getElementById('typewriter-toggle'),
-            openBtn: document.getElementById('open-file')
+            openBtn: document.getElementById('open-file'),
+            // 编辑器相关
+            editorContainer: document.getElementById('editor'),
+            modeReadBtn: document.getElementById('mode-read'),
+            modeEditBtn: document.getElementById('mode-edit')
         };
     }
 
@@ -117,6 +126,16 @@ class App {
         this.elements.typewriterBtn?.addEventListener('click', () => {
             this._toggleTypewriterMode();
         });
+
+        // 阅读模式按钮
+        this.elements.modeReadBtn?.addEventListener('click', () => {
+            this._setMode('read');
+        });
+
+        // 编辑模式按钮
+        this.elements.modeEditBtn?.addEventListener('click', () => {
+            this._setMode('edit');
+        });
     }
 
     /**
@@ -141,6 +160,12 @@ class App {
                 e.preventDefault();
                 this._toggleTypewriterMode();
             }
+
+            // Ctrl+E 切换编辑/阅读模式
+            if (e.ctrlKey && !e.shiftKey && e.key === 'e') {
+                e.preventDefault();
+                this._setMode(this.isEditMode ? 'read' : 'edit');
+            }
         });
     }
 
@@ -148,6 +173,9 @@ class App {
      * 文件加载处理
      */
     _onFileLoaded(content, fileName) {
+        // 存储原始内容（供编辑器使用）
+        this.currentContent = content;
+
         // 更新文件名显示
         if (this.elements.fileName) {
             this.elements.fileName.textContent = fileName;
@@ -166,6 +194,11 @@ class App {
         // 发布事件
         this.eventBus.emit(Events.CONTENT_PARSED, { html, outline });
         this.eventBus.emit(Events.OUTLINE_UPDATED, outline);
+
+        // 如果编辑器已初始化且在编辑模式，同步内容
+        if (this.editor && this.isEditMode) {
+            this.editor.setValue(content);
+        }
 
         this._showToast(`已加载: ${fileName}`, 'success');
     }
@@ -187,6 +220,66 @@ class App {
     }
 
     /**
+     * 设置模式（阅读/编辑）
+     */
+    _setMode(mode) {
+        if (mode === 'edit' && !this.isEditMode) {
+            // 切换到编辑模式
+            this.isEditMode = true;
+
+            // 更新按钮状态
+            this.elements.modeReadBtn?.classList.remove('active');
+            this.elements.modeEditBtn?.classList.add('active');
+
+            // 隐藏阅读区，显示编辑区
+            this.elements.content.style.display = 'none';
+            this.elements.editorContainer.style.display = 'block';
+
+            // 初始化或更新编辑器
+            if (!this.editor && window.MditorEditor) {
+                this.editor = new window.MditorEditor();
+                const isDark = this.state.get('ui.theme') === 'dark';
+                this.editor.init(this.elements.editorContainer, this.currentContent, {
+                    isDark,
+                    onChange: (content) => {
+                        this.currentContent = content;
+                        // 实时更新大纲
+                        const outline = this.parser.extractOutline(content);
+                        this.eventBus.emit(Events.OUTLINE_UPDATED, outline);
+                    }
+                });
+            } else if (this.editor) {
+                this.editor.setValue(this.currentContent);
+            }
+
+            this.editor?.focus();
+
+        } else if (mode === 'read' && this.isEditMode) {
+            // 切换到阅读模式
+            this.isEditMode = false;
+
+            // 更新按钮状态
+            this.elements.modeReadBtn?.classList.add('active');
+            this.elements.modeEditBtn?.classList.remove('active');
+
+            // 从编辑器获取最新内容
+            if (this.editor) {
+                this.currentContent = this.editor.getValue();
+            }
+
+            // 重新渲染
+            const html = this.parser.parse(this.currentContent);
+            const outline = this.parser.extractOutline(this.currentContent);
+            this.eventBus.emit(Events.CONTENT_PARSED, { html, outline });
+            this.eventBus.emit(Events.OUTLINE_UPDATED, outline);
+
+            // 隐藏编辑区，显示阅读区
+            this.elements.editorContainer.style.display = 'none';
+            this.elements.content.style.display = 'block';
+        }
+    }
+
+    /**
      * 切换主题
      */
     _toggleTheme() {
@@ -196,6 +289,11 @@ class App {
         this.state.set('ui.theme', next);
         this.state.persistTheme();
         this._applyTheme();
+
+        // 同步编辑器主题
+        if (this.editor) {
+            this.editor.setDarkMode(next === 'dark');
+        }
 
         this.eventBus.emit(Events.THEME_CHANGED, next);
     }

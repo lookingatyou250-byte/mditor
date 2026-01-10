@@ -262,3 +262,55 @@ kbd {
     margin: 0 2px;
     border: 1px solid var(--bg-hover);
 }
+
+/* ----------------------
+   Mode Toggle (阅读/编辑)
+   ---------------------- */
+.mode-toggle {
+    display: flex;
+    background: var(--bg-hover);
+    border-radius: var(--radius-md);
+    padding: 2px;
+    margin-left: 12px;
+}
+
+.mode-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 500;
+    padding: 4px 12px;
+    border-radius: calc(var(--radius-md) - 2px);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.mode-btn:hover {
+    color: var(--text-primary);
+}
+
+.mode-btn.active {
+    background: var(--bg-body);
+    color: var(--color-accent);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+/* ----------------------
+   Editor Area
+   ---------------------- */
+.editor-area {
+    flex: 1;
+    overflow: hidden;
+    background-color: var(--bg-body);
+}
+
+.editor-area .cm-editor {
+    height: 100%;
+    outline: none;
+}
+
+.editor-area .cm-scroller {
+    overflow: auto;
+    font-family: var(--font-serif);
+}

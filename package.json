@@ -5,16 +5,19 @@
   "main": "main.js",
   "scripts": {
     "start": "electron .",
+    "bundle:editor": "esbuild js/modules/editor.src.js --bundle --minify --outfile=js/modules/editor.bundle.js --format=iife",
+    "prebuild": "npm run bundle:editor",
     "build": "electron-builder",
-    "build:win": "electron-builder --win",
-    "build:mac": "electron-builder --mac",
-    "build:all": "electron-builder --win --mac"
+    "build:win": "npm run bundle:editor && electron-builder --win",
+    "build:mac": "npm run bundle:editor && electron-builder --mac",
+    "build:all": "npm run bundle:editor && electron-builder --win --mac"
   },
   "author": "Your Name",
   "license": "MIT",
   "devDependencies": {
     "electron": "^28.0.0",
-    "electron-builder": "^24.9.1"
+    "electron-builder": "^24.9.1",
+    "esbuild": "^0.27.2"
   },
   "build": {
     "appId": "com.mditor.app",
@@ -68,6 +71,12 @@
     }
   },
   "dependencies": {
+    "@codemirror/commands": "^6.10.1",
+    "@codemirror/lang-markdown": "^6.5.0",
+    "@codemirror/language": "^6.12.1",
+    "@codemirror/state": "^6.5.3",
+    "@codemirror/theme-one-dark": "^6.1.3",
+    "@codemirror/view": "^6.39.9",
     "dompurify": "^3.3.1"
   }
 }
