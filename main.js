@@ -123,33 +123,50 @@ function getMenuTemplate() {
     ];
 }
 
-const logPath = path.join(app.getPath('userData'), 'debug.log');
+// 诊断日志：同时尝试写到 userData 和 桌面 (如果可能)，并打印到控制台
 function logToFile(msg) {
-    fs.appendFileSync(logPath, `[${new Date().toISOString()}] ${msg}\n`);
+    const timestamp = new Date().toISOString();
+    const logLine = `[${timestamp}] ${msg}\n`;
+    console.log(logLine);
+
+    try {
+        const userDataPath = app.getPath('userData');
+        if (!fs.existsSync(userDataPath)) fs.mkdirSync(userDataPath, { recursive: true });
+        fs.appendFileSync(path.join(userDataPath, 'debug.log'), logLine);
+    } catch (e) { console.error('Failed to write to userData log', e); }
 }
+
+// 全局错误捕获
+process.on('uncaughtException', (error) => {
+    logToFile(`CRITICAL: Uncaught Exception: ${error.stack}`);
+    dialog.showErrorBox('Critical Error', error.message);
+});
 
 // 应用就绪
 const gotTheLock = app.requestSingleInstanceLock();
 
 if (!gotTheLock) {
-    logToFile('Quit: Second instance detected during startup lock request.');
+    logToFile('Quit: Second instance detected.');
     app.quit();
 } else {
     app.on('second-instance', (event, commandLine, workingDirectory) => {
         logToFile(`Event: second-instance. CMD: ${JSON.stringify(commandLine)}`);
-        // 当运行第二个实例时，聚焦到主窗口
+
+        // 诊断弹窗：显示接收到的参数
+        // dialog.showMessageBoxSync(null, { message: `Second Instance Args: ${JSON.stringify(commandLine)}` });
+
         if (mainWindow) {
             if (mainWindow.isMinimized()) mainWindow.restore();
             mainWindow.focus();
 
-            // Windows/Linux: 从命令行参数处理文件
-            // 过滤掉第一个参数（通常是可执行文件路径）和可能的开关
+            // 简单粗暴的查找逻辑：找第一个看起来像文件的参数
+            // 忽略第一个参数 (exe)
             const args = commandLine.slice(1);
-            const filePath = args.find(arg => !arg.startsWith('--') && (arg.toLowerCase().endsWith('.md') || arg.toLowerCase().endsWith('.markdown') || arg.toLowerCase().endsWith('.txt')));
-
-            logToFile(`Second instance file path found: ${filePath}`);
+            // 找任何不是以 -- 开头的参数，我们假设它是文件
+            const filePath = args.find(arg => !arg.startsWith('--'));
 
             if (filePath) {
+                logToFile(`Second instance file match: ${filePath}`);
                 openFile(filePath);
             }
         }
@@ -157,20 +174,26 @@ if (!gotTheLock) {
 
     app.whenReady().then(() => {
         logToFile(`App Ready. Platform: ${process.platform}. Argv: ${JSON.stringify(process.argv)}`);
+
+        // 诊断弹窗：让用户看到到底收到了什么 (仅在非开发环境或有文件参数时)
+        // const isDev = !app.isPackaged;
+        // if (!isDev || process.argv.length > 1) {
+        //    dialog.showMessageBoxSync(null, { title: 'Debug Info', message: `Startup Args:\n${JSON.stringify(process.argv, null, 2)}` });
+        // }
+
         createWindow();
 
-        // Windows/Linux: 启动时检查是否有文件参数
         if (process.platform !== 'darwin') {
-            // 过滤 argv，通常 argv[0] 是 exe 路径
             const args = process.argv.slice(1);
-            const filePath = args.find(arg => !arg.startsWith('--') && (arg.toLowerCase().endsWith('.md') || arg.toLowerCase().endsWith('.markdown') || arg.toLowerCase().endsWith('.txt')));
+            // 极简逻辑：只要不是 flag 就是文件
+            const filePath = args.find(arg => !arg.startsWith('--'));
 
-            logToFile(`Startup file path found: ${filePath}`);
+            logToFile(`Startup file search result: ${filePath}`);
 
             if (filePath) {
-                // 等待窗口加载完成后发送文件内容
+                // 使用 once 确保只触发一次
                 mainWindow.once('ready-to-show', () => {
-                    logToFile(`Window ready-to-show, opening file: ${filePath}`);
+                    logToFile(`Window ready, opening: ${filePath}`);
                     openFile(filePath);
                 });
             }
@@ -184,81 +207,74 @@ if (!gotTheLock) {
     });
 }
 
-// macOS: 监听打开文件事件
-app.on('open-file', (event, path) => {
-    logToFile(`Event: open-file. Path: ${path}`);
-    event.preventDefault();
-    if (mainWindow) {
-        if (mainWindow.isMinimized()) mainWindow.restore();
-        mainWindow.focus();
-        openFile(path);
-    } else {
-        // 如果窗口还未创建（冷启动），等到 ready 后再处理
-        app.once('ready', () => {
-            // 需要等待窗口创建
-            setTimeout(() => {
-                logToFile(`Delayed open-file: ${path}`);
-                if (mainWindow) openFile(path);
-            }, 500);
-        });
-    }
-});
-
 // 待打开的文件路径
 let pendingFile = null;
 
 // 监听渲染进程准备就绪
 ipcMain.on('app-ready', () => {
-    logToFile('Event: app-ready received from renderer');
+    logToFile('Event: app-ready received');
     if (pendingFile) {
-        logToFile(`Checking pending file: ${pendingFile}`);
+        logToFile(`Flushing pending file: ${pendingFile}`);
         sendFileToRenderer(pendingFile);
-        pendingFile = null; // 清空等待队列
+        pendingFile = null;
     }
 });
 
-// 读取并发送文件内容到渲染进程
-function openFile(filePath) {
-    logToFile(`Processing openFile request: ${filePath}`);
+// macOS: 监听打开文件事件
+app.on('open-file', (event, path) => {
+    event.preventDefault(); // 必须阻止默认行为
+    logToFile(`Event: open-file. Path: ${path}`);
 
-    // 如果没有窗口，或者文件路径为空，暂存路径等待窗口/应用就绪
+    if (mainWindow) {
+        if (mainWindow.isMinimized()) mainWindow.restore();
+        mainWindow.focus();
+        openFile(path);
+    } else {
+        // 缓存路径，等待 app-ready 后处理
+        app.once('ready', () => {
+            // 再次检查 mainWindow 是否已创建（可能在 ready 中创建了）
+            // 如果在 ready 中创建 window 是同步的，这里 mainWindow 应该有了
+            // 但为了保险，我们使用 setTimeout 或者依赖 pendingFile 机制
+            // 其实更好的做法是：这里调用 openFile，openFile 会处理 pendingFile 逻辑
+            logToFile(`Delayed open-file handling for: ${path}`);
+            openFile(path);
+        });
+    }
+});
+
+// 处理打开文件请求
+function openFile(filePath) {
     if (!filePath) return;
 
-    // 暂存路径
-    pendingFile = filePath;
+    // 清理路径 (移除可能存在的包裹引号)
+    const cleanPath = filePath.replace(/^"|"$/g, '').trim();
+    if (!cleanPath) return;
 
-    if (!mainWindow) {
-        logToFile('MainWindow not created yet, file cached in pendingFile');
+    logToFile(`OpenFile called for: ${cleanPath}`);
+
+    // 如果主窗口还没建好，或者正在加载，则暂存
+    if (!mainWindow || (mainWindow.webContents && mainWindow.webContents.isLoading())) {
+        logToFile(`Caching pending file: ${cleanPath}`);
+        pendingFile = cleanPath;
         return;
     }
 
-    // 尝试读取，但不再直接发送，而是更新 pendingFile
-    // 实际发送逻辑由 app-ready 触发，或者如果窗口已经加载完毕直接发送（双击文件时应用已运行的情况）
-    // 为了简化逻辑：我们只在 mainWindow.webContents 加载完成后发送
-
-    // 如果是二次打开（应用已运行），渲染进程肯定已经 ready 了，可以直接发
-    if (mainWindow.webContents && !mainWindow.webContents.isLoading()) {
-        logToFile('Window is loaded, sending file immediately');
-        sendFileToRenderer(filePath);
-        pendingFile = null;
-    } else {
-        logToFile('Window is loading, waiting for app-ready');
-    }
+    // 窗口就绪，直接发送
+    sendFileToRenderer(cleanPath);
 }
 
 function sendFileToRenderer(filePath) {
-    // 如果路径包含引号，去除它
-    let cleanPath = filePath.replace(/"/g, '');
+    logToFile(`Sending file to renderer: ${filePath}`);
 
-    fs.readFile(cleanPath, 'utf-8', (err, content) => {
+    fs.readFile(filePath, 'utf-8', (err, content) => {
         if (err) {
-            logToFile(`Error reading file: ${err.message}`);
+            logToFile(`Read error: ${err.message}`);
+            // 可以选择弹窗通知用户
+            // dialog.showErrorBox('File Open Error', `Could not open file:\n${filePath}\n${err.message}`);
             return;
         }
 
-        const absolutePath = path.resolve(cleanPath);
-        logToFile(`Sending file content: ${absolutePath}`);
-
+        const absolutePath = path.resolve(filePath);
         mainWindow.webContents.send('file-opened', {
             content,
             fileName: path.basename(absolutePath),
