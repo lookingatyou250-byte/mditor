@@ -262,7 +262,7 @@ class App {
      * 加载演示内容
      */
     _loadDemo() {
-        const demoContent = `# 欢迎使用 Mditor
+        const demoContent = `# 欢迎使用 mditor
 
 这是一个优雅的 Markdown 阅读器。
 
