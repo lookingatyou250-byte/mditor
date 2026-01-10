@@ -629,12 +629,12 @@ class App {
                         this._scheduleAutoSave();
                     }
                 });
+
+                // 初始化斜杠命令（只在编辑器创建时初始化一次）
+                this._initSlashCommands();
             } else if (this.editor) {
                 this.editor.setValue(this.currentContent);
             }
-
-            // 初始化斜杠命令
-            this._initSlashCommands();
 
             this.editor?.focus();
 
@@ -885,6 +885,7 @@ class App {
      */
     _checkForSlashTrigger() {
         if (!this.editor?.view) return;
+        if (this.slashMenuVisible) return;  // 菜单已显示则不重复触发
 
         const state = this.editor.view.state;
         const { from } = state.selection.main;
@@ -892,11 +893,19 @@ class App {
         // 获取光标前的字符
         if (from > 0) {
             const beforeCursor = state.sliceDoc(from - 1, from);
-            const beforeThat = from > 1 ? state.sliceDoc(from - 2, from - 1) : ' ';
 
-            // 只在行首或空格后的 / 触发
-            if (beforeCursor === '/' && (beforeThat === '\n' || beforeThat === ' ' || from === 1)) {
-                this._showSlashMenu();
+            // 只要输入了 / 就触发
+            if (beforeCursor === '/') {
+                // 检查是否在行首或空白字符后（避免在代码路径中触发）
+                if (from === 1) {
+                    this._showSlashMenu();
+                    return;
+                }
+
+                const beforeThat = state.sliceDoc(from - 2, from - 1);
+                if (beforeThat === '\n' || beforeThat === ' ' || beforeThat === '\t' || beforeThat === '') {
+                    this._showSlashMenu();
+                }
             }
         }
     }
