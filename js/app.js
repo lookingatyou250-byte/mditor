@@ -856,172 +856,137 @@ class App {
     // ========== 斜杠命令 ==========
 
     /**
-     * 初始化斜杠命令监听
+     * 初始化斜杠命令
      */
     _initSlashCommands() {
-        // 防止重复初始化
-        if (this.slashCommandsInitialized) return;
-        if (!this.editor?.view) return;
-
+        if (this.slashCommandsInitialized || !this.editor?.view) return;
         this.slashCommandsInitialized = true;
-        console.log('📝 Slash commands initialized');
 
-        // 监听编辑器键盘事件
-        this.editor.view.dom.addEventListener('keydown', (e) => {
+        // 使用 keyup 事件检测 // 输入
+        this.editor.view.dom.addEventListener('keyup', (e) => {
+            if (e.key === '/' && !this.slashMenuVisible) {
+                this._checkSlashTrigger();
+            }
             if (this.slashMenuVisible) {
-                this._handleSlashMenuKeydown(e);
+                this._handleSlashKey(e);
             }
         });
 
-        // 监听输入事件
-        this.editor.view.dom.addEventListener('input', () => {
-            this._checkForSlashTrigger();
-        });
-
-        // 点击其他地方关闭菜单
-        document.addEventListener('click', (e) => {
-            if (this.slashMenuVisible && this.elements.slashMenu && !this.elements.slashMenu.contains(e.target)) {
+        // 点击关闭菜单
+        document.addEventListener('mousedown', (e) => {
+            if (this.slashMenuVisible && !this.elements.slashMenu?.contains(e.target)) {
                 this._hideSlashMenu();
             }
         });
     }
 
     /**
-     * 检测是否输入了 // (双斜杠触发)
+     * 检测 // 触发
      */
-    _checkForSlashTrigger() {
-        if (!this.editor?.view) return;
-        if (this.slashMenuVisible) return;
-
+    _checkSlashTrigger() {
         const state = this.editor.view.state;
-        const { from } = state.selection.main;
-
-        // 检测 // (需要至少2个字符)
-        if (from >= 2) {
-            const lastTwo = state.sliceDoc(from - 2, from);
-            console.log('🔍 Checking:', lastTwo);
-
-            if (lastTwo === '//') {
-                console.log('✅ Trigger detected!');
-                this._showSlashMenu();
-            }
+        const pos = state.selection.main.from;
+        if (pos >= 2 && state.sliceDoc(pos - 2, pos) === '//') {
+            this._showSlashMenu();
         }
     }
 
     /**
-     * 显示斜杠菜单
+     * 显示菜单
      */
     _showSlashMenu() {
-        if (!this.elements.slashMenu || !this.editor?.view) return;
+        if (!this.elements.slashMenu) return;
 
         this.slashMenuVisible = true;
         this.slashMenuIndex = 0;
 
-        // 获取光标位置
+        // 定位到光标
         const coords = this.editor.view.coordsAtPos(this.editor.view.state.selection.main.from);
+        const menu = this.elements.slashMenu;
+        menu.style.display = 'block';
+        menu.style.left = `${coords.left}px`;
+        menu.style.top = `${coords.bottom + 4}px`;
 
-        // 渲染菜单
         this._renderSlashMenu();
-
-        // 定位菜单
-        this.elements.slashMenu.style.display = 'block';
-        this.elements.slashMenu.style.left = `${coords.left}px`;
-        this.elements.slashMenu.style.top = `${coords.bottom + 5}px`;
     }
 
     /**
-     * 隐藏斜杠菜单
+     * 隐藏菜单
      */
     _hideSlashMenu() {
-        if (!this.elements.slashMenu) return;
-
         this.slashMenuVisible = false;
-        this.elements.slashMenu.style.display = 'none';
+        if (this.elements.slashMenu) {
+            this.elements.slashMenu.style.display = 'none';
+        }
     }
 
     /**
-     * 渲染斜杠菜单内容
+     * 渲染菜单
      */
     _renderSlashMenu() {
-        const list = this.elements.slashMenu.querySelector('.slash-menu-list');
+        const list = this.elements.slashMenu?.querySelector('.slash-menu-list');
         if (!list) return;
 
         list.innerHTML = this.slashCommands.map((cmd, i) => `
-            <div class="slash-menu-item ${i === this.slashMenuIndex ? 'active' : ''}" data-index="${i}">
+            <div class="slash-menu-item${i === this.slashMenuIndex ? ' active' : ''}" data-i="${i}">
                 <span class="slash-menu-icon">${cmd.icon}</span>
                 <span class="slash-menu-label">${cmd.label}</span>
                 <span class="slash-menu-hint">${cmd.hint}</span>
             </div>
         `).join('');
 
-        // 绑定点击事件
-        list.querySelectorAll('.slash-menu-item').forEach(item => {
-            item.addEventListener('click', () => {
-                const index = parseInt(item.dataset.index);
-                this._executeSlashCommand(index);
-            });
+        list.querySelectorAll('.slash-menu-item').forEach(el => {
+            el.addEventListener('click', () => this._execSlashCmd(+el.dataset.i));
         });
     }
 
     /**
-     * 处理斜杠菜单键盘事件
+     * 处理菜单键盘
      */
-    _handleSlashMenuKeydown(e) {
-        switch (e.key) {
-            case 'ArrowUp':
-                e.preventDefault();
-                this.slashMenuIndex = Math.max(0, this.slashMenuIndex - 1);
-                this._renderSlashMenu();
-                break;
-            case 'ArrowDown':
-                e.preventDefault();
-                this.slashMenuIndex = Math.min(this.slashCommands.length - 1, this.slashMenuIndex + 1);
-                this._renderSlashMenu();
-                break;
-            case 'Enter':
-                e.preventDefault();
-                this._executeSlashCommand(this.slashMenuIndex);
-                break;
-            case 'Escape':
-                e.preventDefault();
-                this._hideSlashMenu();
-                break;
+    _handleSlashKey(e) {
+        if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            this.slashMenuIndex = Math.max(0, this.slashMenuIndex - 1);
+            this._renderSlashMenu();
+        } else if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            this.slashMenuIndex = Math.min(this.slashCommands.length - 1, this.slashMenuIndex + 1);
+            this._renderSlashMenu();
+        } else if (e.key === 'Enter') {
+            e.preventDefault();
+            this._execSlashCmd(this.slashMenuIndex);
+        } else if (e.key === 'Escape') {
+            e.preventDefault();
+            this._hideSlashMenu();
         }
     }
 
     /**
-     * 执行斜杠命令
+     * 执行命令：替换 // 为格式文本
      */
-    _executeSlashCommand(index) {
-        const cmd = this.slashCommands[index];
+    _execSlashCmd(i) {
+        const cmd = this.slashCommands[i];
         if (!cmd || !this.editor?.view) return;
 
-        const { from } = this.editor.view.state.selection.main;
+        const view = this.editor.view;
+        const pos = view.state.selection.main.from;
+        const start = pos - 2; // // 起始位置
         const text = cmd.text;
 
-        // 计算 // 的起始位置（光标前2个字符）
-        const deleteFrom = from - 2;
+        // 计算光标位置
+        let anchor = start + text.length;
+        if (cmd.cursorOffset) anchor += cmd.cursorOffset;
 
-        // 单次 dispatch：删除 // 并插入格式文本
-        let selection;
-        if (cmd.selectFrom !== undefined && cmd.selectTo !== undefined) {
-            // 选中部分文本（如 **文本**）
-            selection = { anchor: deleteFrom + cmd.selectFrom, head: deleteFrom + cmd.selectTo };
-        } else if (cmd.cursorOffset !== undefined) {
-            // 光标偏移（如代码块）
-            selection = { anchor: deleteFrom + text.length + cmd.cursorOffset };
-        } else {
-            // 默认光标在文本末尾
-            selection = { anchor: deleteFrom + text.length };
-        }
-
-        this.editor.view.dispatch({
-            changes: { from: deleteFrom, to: from, insert: text },
-            selection: selection
+        // 单次 dispatch 替换 // 为格式文本
+        view.dispatch({
+            changes: { from: start, to: pos, insert: text },
+            selection: cmd.selectFrom !== undefined
+                ? { anchor: start + cmd.selectFrom, head: start + cmd.selectTo }
+                : { anchor }
         });
 
-        this.editor.focus();
         this._hideSlashMenu();
+        view.focus();
     }
 }
 
