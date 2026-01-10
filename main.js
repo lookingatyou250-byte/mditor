@@ -61,9 +61,12 @@ function createWindow(filePathToOpen = null) {
         win.show();
     });
 
+    // 保存 ID 用于清理（因为 closed 事件时 webContents 已销毁）
+    const webContentsId = win.webContents.id;
+
     // 窗口关闭时清理状态
     win.on('closed', () => {
-        windowStates.delete(win.webContents.id);
+        windowStates.delete(webContentsId);
     });
 
     // 隐藏菜单栏（Windows/Linux）
