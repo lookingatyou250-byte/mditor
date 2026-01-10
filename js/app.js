@@ -881,31 +881,21 @@ class App {
     }
 
     /**
-     * 检测是否输入了 /
+     * 检测是否输入了 // (双斜杠触发)
      */
     _checkForSlashTrigger() {
         if (!this.editor?.view) return;
-        if (this.slashMenuVisible) return;  // 菜单已显示则不重复触发
+        if (this.slashMenuVisible) return;
 
         const state = this.editor.view.state;
         const { from } = state.selection.main;
 
-        // 获取光标前的字符
-        if (from > 0) {
-            const beforeCursor = state.sliceDoc(from - 1, from);
+        // 检测 // (需要至少2个字符)
+        if (from >= 2) {
+            const lastTwo = state.sliceDoc(from - 2, from);
 
-            // 只要输入了 / 就触发
-            if (beforeCursor === '/') {
-                // 检查是否在行首或空白字符后（避免在代码路径中触发）
-                if (from === 1) {
-                    this._showSlashMenu();
-                    return;
-                }
-
-                const beforeThat = state.sliceDoc(from - 2, from - 1);
-                if (beforeThat === '\n' || beforeThat === ' ' || beforeThat === '\t' || beforeThat === '') {
-                    this._showSlashMenu();
-                }
+            if (lastTwo === '//') {
+                this._showSlashMenu();
             }
         }
     }
@@ -998,11 +988,11 @@ class App {
         const cmd = this.slashCommands[index];
         if (!cmd) return;
 
-        // 删除触发的 /
+        // 删除触发的 // (2个字符)
         if (this.editor?.view) {
             const { from } = this.editor.view.state.selection.main;
             this.editor.view.dispatch({
-                changes: { from: from - 1, to: from, insert: '' }
+                changes: { from: from - 2, to: from, insert: '' }
             });
         }
 
