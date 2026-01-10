@@ -37,7 +37,6 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: false
-          CSC_LINK: ""
 
       - name: List dist contents
         run: ls -la dist/ || dir dist
