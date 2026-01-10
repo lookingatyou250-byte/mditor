@@ -33,6 +33,7 @@ class App {
         // 斜杠命令
         this.slashMenuVisible = false;
         this.slashMenuIndex = 0;
+        this.slashCommandsInitialized = false;
         this.slashCommands = [
             { icon: 'H1', label: '标题 1', hint: '# ', text: '# ' },
             { icon: 'H2', label: '标题 2', hint: '## ', text: '## ' },
@@ -858,23 +859,28 @@ class App {
      * 初始化斜杠命令监听
      */
     _initSlashCommands() {
+        // 防止重复初始化
+        if (this.slashCommandsInitialized) return;
         if (!this.editor?.view) return;
 
-        // 监听编辑器内容变化来检测 /
+        this.slashCommandsInitialized = true;
+        console.log('📝 Slash commands initialized');
+
+        // 监听编辑器键盘事件
         this.editor.view.dom.addEventListener('keydown', (e) => {
             if (this.slashMenuVisible) {
                 this._handleSlashMenuKeydown(e);
             }
         });
 
-        // 监听 / 输入
-        this.editor.view.dom.addEventListener('input', (e) => {
+        // 监听输入事件
+        this.editor.view.dom.addEventListener('input', () => {
             this._checkForSlashTrigger();
         });
 
         // 点击其他地方关闭菜单
         document.addEventListener('click', (e) => {
-            if (this.slashMenuVisible && !this.elements.slashMenu.contains(e.target)) {
+            if (this.slashMenuVisible && this.elements.slashMenu && !this.elements.slashMenu.contains(e.target)) {
                 this._hideSlashMenu();
             }
         });
@@ -893,8 +899,10 @@ class App {
         // 检测 // (需要至少2个字符)
         if (from >= 2) {
             const lastTwo = state.sliceDoc(from - 2, from);
+            console.log('🔍 Checking:', lastTwo);
 
             if (lastTwo === '//') {
+                console.log('✅ Trigger detected!');
                 this._showSlashMenu();
             }
         }
