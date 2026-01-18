@@ -7,7 +7,7 @@
     "start": "electron .",
     "bundle:editor": "esbuild js/modules/editor.src.js --bundle --minify --outfile=js/modules/editor.bundle.js --format=iife",
     "icons": "node scripts/process-icon.js && node scripts/generate-icons.js && node scripts/create-doc-icon.js && node scripts/create-installer-images.js",
-    "prebuild": "npm run bundle:editor && npm run icons",
+    "prebuild": "npm run bundle:editor",
     "build": "electron-builder",
     "build:win": "npm run prebuild && electron-builder --win",
     "build:mac": "npm run prebuild && electron-builder --mac",
