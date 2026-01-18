@@ -68,7 +68,7 @@ class App {
         this._applySidebarMode();  // 应用默认侧边栏状态（隐藏）
         this._checkInitialFile();
 
-        console.log('📝 mditor v2.8.0 initialized');
+        console.log('📝 mditor v2.8.1 initialized');
     }
 
     /**
@@ -267,14 +267,10 @@ class App {
                 this._setMode(this.isEditMode ? 'read' : 'edit');
             }
 
-            // Ctrl+N 新建
+            // Ctrl+N 新建空白文档
             if (e.ctrlKey && e.key === 'n') {
                 e.preventDefault();
-                if (window.electronAPI) {
-                    window.electronAPI.newWindow();
-                } else {
-                    this._newFile();
-                }
+                this._newFile();
             }
 
             // Ctrl+O 打开
@@ -847,7 +843,7 @@ class App {
 
 | 快捷键 | 功能 |
 |--------|------|
-| \`Ctrl+N\` | 新建窗口 |
+| \`Ctrl+N\` | 新建空白文档 |
 | \`Ctrl+O\` | 打开文件 |
 | \`Ctrl+S\` | 保存文件 |
 | \`Ctrl+Shift+S\` | 另存为 |
