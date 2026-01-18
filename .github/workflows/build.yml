@@ -17,8 +17,8 @@ jobs:
         include:
           - os: windows-latest
             platform: win
-          - os: macos-latest
-            platform: mac
+          # - os: macos-latest
+          #   platform: mac
     
     runs-on: ${{ matrix.os }}
     
@@ -65,11 +65,11 @@ jobs:
           name: win-build
           path: dist
 
-      - name: Download macOS Build
-        uses: actions/download-artifact@v4
-        with:
-          name: mac-build
-          path: dist
+      # - name: Download macOS Build
+      #   uses: actions/download-artifact@v4
+      #   with:
+      #     name: mac-build
+      #     path: dist
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
