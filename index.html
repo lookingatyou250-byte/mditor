@@ -57,11 +57,18 @@
 
       <!-- 右侧：模式切换 + 主题 + 窗口控制 -->
       <div class="titlebar-right">
+        <button id="focus-toggle" class="titlebar-btn" title="聚焦模式">
+          <svg class="focus-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <!-- 聚焦图标 (靶心) -->
+            <circle cx="12" cy="12" r="10"/>
+            <circle cx="12" cy="12" r="6"/>
+            <circle cx="12" cy="12" r="2"/>
+          </svg>
+        </button>
         <button id="mode-toggle" class="titlebar-btn" title="切换编辑/阅读 (Ctrl+E)">
           <svg class="mode-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-            <!-- 阅读模式图标 (书本) -->
-            <path d="M4 19.5A2.5 2.5 0 016.5 17H20"/>
-            <path d="M4 4.5A2.5 2.5 0 016.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15z"/>
+            <!-- 默认阅读模式 → 显示铅笔图标（点击切换到编辑） -->
+            <path d="M17 3a2.828 2.828 0 114 4L7.5 20.5 2 22l1.5-5.5L17 3z"/>
           </svg>
         </button>
         <button id="theme-toggle" class="titlebar-btn" title="切换主题">

@@ -273,6 +273,22 @@ hr {
     }
 }
 
+/* ----------------------
+   Focus Mode (聚焦模式)
+   ---------------------- */
+.content-area.focus-mode > *:not(.focused) {
+    opacity: 0.3;
+    transition: opacity 0.3s ease;
+}
+
+.content-area.focus-mode > .focused {
+    opacity: 1;
+}
+
+.content-area.focus-mode > *:hover {
+    opacity: 1;
+}
+
 /* Details/Summary */
 details {
     border: 1px solid var(--color-border);

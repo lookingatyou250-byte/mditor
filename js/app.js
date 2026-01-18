@@ -67,7 +67,7 @@ class App {
         this._applyTheme();
         this._checkInitialFile();
 
-        console.log('📝 mditor v2.6.0 initialized');
+        console.log('📝 mditor v2.7.0 initialized');
     }
 
     /**
@@ -96,6 +96,7 @@ class App {
             themeBtn: document.getElementById('theme-toggle'),
             sidebarBtn: document.getElementById('sidebar-toggle'),
             modeToggleBtn: document.getElementById('mode-toggle'),
+            focusBtn: document.getElementById('focus-toggle'),
             newFileBtn: document.getElementById('new-file-btn'),
 
             // 窗口控制
@@ -181,6 +182,27 @@ class App {
         this.elements.fileName?.addEventListener('click', () => {
             this._onFileNameClick();
         });
+
+        // 聚焦模式切换
+        this.elements.focusBtn?.addEventListener('click', () => {
+            this._toggleFocusMode();
+        });
+    }
+
+    /**
+     * 切换聚焦模式
+     */
+    _toggleFocusMode() {
+        const current = this.state.get('ui.focusMode');
+        const next = !current;
+
+        this.state.set('ui.focusMode', next);
+        this.eventBus.emit(Events.FOCUS_MODE_TOGGLE, next);
+
+        // 更新按钮状态
+        this.elements.focusBtn?.classList.toggle('active', next);
+
+        this._showToast(next ? '聚焦模式已开启' : '聚焦模式已关闭', 'info');
     }
 
     /**
@@ -682,18 +704,18 @@ class App {
     }
 
     /**
-     * 更新模式 UI
+     * 更新模式 UI（图标显示目标状态，与主题切换逻辑一致）
      */
     _updateModeUI() {
         const modeIcon = this.elements.modeToggleBtn?.querySelector('.mode-icon');
         if (modeIcon) {
-            // 切换 SVG 图标
+            // 图标显示"点击后会变成什么"
             if (this.isEditMode) {
-                // 编辑模式：铅笔图标
-                modeIcon.innerHTML = '<path d="M17 3a2.828 2.828 0 114 4L7.5 20.5 2 22l1.5-5.5L17 3z"/>';
-            } else {
-                // 阅读模式：书本图标
+                // 当前编辑模式 → 显示书本图标（点击切换到阅读）
                 modeIcon.innerHTML = '<path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M4 4.5A2.5 2.5 0 016.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15z"/>';
+            } else {
+                // 当前阅读模式 → 显示铅笔图标（点击切换到编辑）
+                modeIcon.innerHTML = '<path d="M17 3a2.828 2.828 0 114 4L7.5 20.5 2 22l1.5-5.5L17 3z"/>';
             }
         }
         if (this.elements.currentMode) {

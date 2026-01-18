@@ -68,6 +68,11 @@
     color: var(--text-primary);
 }
 
+.titlebar-btn.active {
+    background-color: var(--bg-active);
+    color: var(--color-accent);
+}
+
 /* File Name */
 .file-name {
     font-size: 13px;
