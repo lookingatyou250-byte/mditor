@@ -49,19 +49,26 @@
         </button>
       </div>
 
-      <!-- 中间：文件名（可点击重命名） -->
+      <!-- 中间：文件名（点击保存/显示路径） -->
       <div class="titlebar-center">
-        <span id="file-name" class="file-name" title="点击重命名">未命名</span>
+        <span id="file-name" class="file-name" title="点击保存">未命名</span>
         <span id="save-indicator" class="save-indicator"></span>
       </div>
 
       <!-- 右侧：模式切换 + 主题 + 窗口控制 -->
       <div class="titlebar-right">
         <button id="mode-toggle" class="titlebar-btn" title="切换编辑/阅读 (Ctrl+E)">
-          <span class="mode-icon">📖</span>
+          <svg class="mode-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <!-- 阅读模式图标 (书本) -->
+            <path d="M4 19.5A2.5 2.5 0 016.5 17H20"/>
+            <path d="M4 4.5A2.5 2.5 0 016.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15z"/>
+          </svg>
         </button>
         <button id="theme-toggle" class="titlebar-btn" title="切换主题">
-          🌙
+          <svg class="theme-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <!-- 月亮图标 (夜间模式) -->
+            <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>
+          </svg>
         </button>
 
         <!-- 窗口控制按钮（仅 Windows/Linux） -->

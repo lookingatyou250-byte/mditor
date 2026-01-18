@@ -77,14 +77,15 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    cursor: default;
+    cursor: pointer;
     padding: 2px 8px;
     border-radius: 4px;
-    transition: background 0.15s;
+    transition: background 0.15s, color 0.15s;
 }
 
 .file-name:hover {
     background: var(--bg-hover);
+    color: var(--text-primary);
 }
 
 /* Save Indicator */
@@ -524,10 +525,17 @@
 }
 
 /* ----------------------
-   Mode Indicator
+   Mode & Theme Icons
    ---------------------- */
-.mode-icon {
-    font-size: 14px;
+.mode-icon,
+.theme-icon {
+    width: 16px;
+    height: 16px;
+}
+
+.titlebar-btn svg {
+    width: 16px;
+    height: 16px;
 }
 
 /* ----------------------

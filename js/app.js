@@ -67,7 +67,7 @@ class App {
         this._applyTheme();
         this._checkInitialFile();
 
-        console.log('📝 mditor v2.5.0 initialized');
+        console.log('📝 mditor v2.6.0 initialized');
     }
 
     /**
@@ -176,6 +176,24 @@ class App {
         this.elements.newFileBtn?.addEventListener('click', () => {
             this._newFile();
         });
+
+        // 点击文件名：新文件触发保存，已保存文件显示路径
+        this.elements.fileName?.addEventListener('click', () => {
+            this._onFileNameClick();
+        });
+    }
+
+    /**
+     * 文件名点击处理
+     */
+    _onFileNameClick() {
+        if (!this.currentFilePath) {
+            // 新文件：触发另存为
+            this._saveFile(true);
+        } else {
+            // 已保存文件：显示完整路径提示
+            this._showToast(this.currentFilePath, 'info');
+        }
     }
 
     /**
@@ -627,12 +645,17 @@ class App {
                         const outline = this.parser.extractOutline(content);
                         this.eventBus.emit(Events.OUTLINE_UPDATED, outline);
 
+                        // 检测斜杠命令（在 onChange 中检测更可靠）
+                        if (!this.slashMenuVisible) {
+                            this._checkSlashTrigger();
+                        }
+
                         // 自动保存（2秒 debounce）
                         this._scheduleAutoSave();
                     }
                 });
 
-                // 初始化斜杠命令（只在编辑器创建时初始化一次）
+                // 初始化斜杠命令事件处理
                 this._initSlashCommands();
             } else if (this.editor) {
                 this.editor.setValue(this.currentContent);
@@ -664,7 +687,14 @@ class App {
     _updateModeUI() {
         const modeIcon = this.elements.modeToggleBtn?.querySelector('.mode-icon');
         if (modeIcon) {
-            modeIcon.textContent = this.isEditMode ? '✏️' : '📖';
+            // 切换 SVG 图标
+            if (this.isEditMode) {
+                // 编辑模式：铅笔图标
+                modeIcon.innerHTML = '<path d="M17 3a2.828 2.828 0 114 4L7.5 20.5 2 22l1.5-5.5L17 3z"/>';
+            } else {
+                // 阅读模式：书本图标
+                modeIcon.innerHTML = '<path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M4 4.5A2.5 2.5 0 016.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15z"/>';
+            }
         }
         if (this.elements.currentMode) {
             this.elements.currentMode.textContent = this.isEditMode ? '编辑' : '阅读';
@@ -759,8 +789,16 @@ class App {
         const theme = this.state.get('ui.theme');
         document.body.dataset.theme = theme;
 
-        if (this.elements.themeBtn) {
-            this.elements.themeBtn.textContent = theme === 'dark' ? '☀️' : '🌙';
+        // 更新主题图标
+        const themeIcon = this.elements.themeBtn?.querySelector('.theme-icon');
+        if (themeIcon) {
+            if (theme === 'dark') {
+                // 亮色模式时显示太阳图标
+                themeIcon.innerHTML = '<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>';
+            } else {
+                // 暗色模式时显示月亮图标
+                themeIcon.innerHTML = '<path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>';
+            }
         }
 
         // 切换代码高亮主题
@@ -859,7 +897,7 @@ class App {
     // ========== 斜杠命令 ==========
 
     /**
-     * 初始化斜杠命令
+     * 初始化斜杠命令（仅事件处理，检测在 onChange 中）
      */
     _initSlashCommands() {
         if (this.slashCommandsInitialized || !this.editor?.view) return;
@@ -876,14 +914,6 @@ class App {
                     e.stopPropagation();
                     this._handleSlashNavigation(e.key);
                 }
-            }
-        });
-
-        // 使用 input 事件检测 // 输入，配合 setTimeout 确保文档已更新
-        view.dom.addEventListener('input', () => {
-            if (!this.slashMenuVisible) {
-                // 延迟检查，确保 CodeMirror 已处理输入
-                setTimeout(() => this._checkSlashTrigger(), 0);
             }
         });
 
