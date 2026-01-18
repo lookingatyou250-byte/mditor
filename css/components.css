@@ -421,6 +421,27 @@
     padding: 40px 60px 100px;
 }
 
+/* 编辑器内容区宽度自适应 */
+.editor-area .cm-content {
+    max-width: min(860px, 100% - 80px);
+    margin: 0 auto;
+}
+
+@media (max-width: 768px) {
+    .editor-area .cm-scroller {
+        padding: 24px 24px 60px;
+    }
+    .editor-area .cm-content {
+        max-width: 100%;
+    }
+}
+
+@media (min-width: 1200px) {
+    .editor-area .cm-content {
+        max-width: 900px;
+    }
+}
+
 /* ----------------------
    Status Bar
    ---------------------- */

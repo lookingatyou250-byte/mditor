@@ -25,7 +25,7 @@ body {
     -moz-osx-font-smoothing: grayscale;
 }
 
-/* 滚动条美化 */
+/* 滚动条美化 - 悬停显示 */
 ::-webkit-scrollbar {
     width: 8px;
     height: 8px;
@@ -38,14 +38,21 @@ body {
 ::-webkit-scrollbar-thumb {
     background: transparent;
     border-radius: var(--radius-full);
+    transition: background-color 0.2s ease;
 }
 
+/* 容器悬停时显示滚动条 */
 :hover::-webkit-scrollbar-thumb {
     background: var(--text-tertiary);
 }
 
 ::-webkit-scrollbar-thumb:hover {
     background: var(--text-secondary);
+}
+
+/* 滚动条角落 */
+::-webkit-scrollbar-corner {
+    background: transparent;
 }
 
 /* 布局结构 */
@@ -87,7 +94,7 @@ body {
     background-color: #333;
 }
 
-:root[data-theme="dark"] .toast {
+body[data-theme="dark"] .toast {
     background-color: #fff;
     color: #000;
 }

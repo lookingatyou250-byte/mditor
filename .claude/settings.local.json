@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nfeat: v2.5.0 - 完全修复斜杠命令、自动保存、宽度自适应\n\n修复:\n- 斜杠命令 // 删除问题：保存触发位置，使用 input 事件\n- 斜杠命令触发问题：setTimeout 确保 CodeMirror 已更新\n- 自动保存状态未更新：添加 hasUnsavedChanges 重置\n- 暗色模式 CSS 选择器：统一使用 body[data-theme]\n\n新增:\n- 内容区宽度自适应（响应式布局）\n- 编辑器区域宽度约束\n- 滚动条悬停显示优化\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")"
+    ]
+  }
+}

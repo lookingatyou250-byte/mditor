@@ -3,11 +3,26 @@
    "Typora-like" Aesthetics
    ---------------------- */
 
-/* Container constraint for readability */
+/* 内容区宽度自适应 */
 .content-area {
-    max-width: 860px;
-    /* Optimal reading width */
+    /* 响应式最大宽度 */
+    max-width: min(860px, 100% - 80px);
     margin: 0 auto;
+}
+
+/* 小窗口时减少边距 */
+@media (max-width: 768px) {
+    .content-area {
+        max-width: 100%;
+        padding: 24px 24px 60px;
+    }
+}
+
+/* 大窗口时保持舒适阅读宽度 */
+@media (min-width: 1200px) {
+    .content-area {
+        max-width: 900px;
+    }
 }
 
 /* Headings */
@@ -181,9 +196,9 @@ td>code {
     color: var(--text-code);
 }
 
-:root[data-theme="dark"] p>code,
-:root[data-theme="dark"] li>code,
-:root[data-theme="dark"] td>code {
+body[data-theme="dark"] p>code,
+body[data-theme="dark"] li>code,
+body[data-theme="dark"] td>code {
     background-color: rgba(255, 255, 255, 0.1);
     color: var(--text-primary);
 }

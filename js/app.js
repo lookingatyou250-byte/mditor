@@ -34,6 +34,7 @@ class App {
         this.slashMenuVisible = false;
         this.slashMenuIndex = 0;
         this.slashCommandsInitialized = false;
+        this.slashTriggerPos = null;  // 保存 // 的位置
         this.slashCommands = [
             { icon: 'H1', label: '标题 1', hint: '# ', text: '# ' },
             { icon: 'H2', label: '标题 2', hint: '## ', text: '## ' },
@@ -66,7 +67,7 @@ class App {
         this._applyTheme();
         this._checkInitialFile();
 
-        console.log('📝 mditor v2.0 initialized');
+        console.log('📝 mditor v2.5.0 initialized');
     }
 
     /**
@@ -722,7 +723,9 @@ class App {
             const result = await window.electronAPI.saveFile(content, false);
 
             if (result.success) {
+                this.hasUnsavedChanges = false;
                 this.elements.saveIndicator?.classList.remove('saving');
+                this._updateSaveIndicator();
                 this._showToast('已自动保存', 'success');
             }
         } catch (e) {
@@ -862,21 +865,42 @@ class App {
         if (this.slashCommandsInitialized || !this.editor?.view) return;
         this.slashCommandsInitialized = true;
 
-        // 使用 keyup 事件检测 // 输入
-        this.editor.view.dom.addEventListener('keyup', (e) => {
-            if (e.key === '/' && !this.slashMenuVisible) {
-                this._checkSlashTrigger();
-            }
+        const view = this.editor.view;
+
+        // 使用 keydown 处理菜单导航（必须在 keydown 阻止默认行为）
+        view.dom.addEventListener('keydown', (e) => {
             if (this.slashMenuVisible) {
-                this._handleSlashKey(e);
+                if (e.key === 'ArrowUp' || e.key === 'ArrowDown' ||
+                    e.key === 'Enter' || e.key === 'Escape') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    this._handleSlashNavigation(e.key);
+                }
             }
         });
 
-        // 点击关闭菜单
+        // 使用 input 事件检测 // 输入，配合 setTimeout 确保文档已更新
+        view.dom.addEventListener('input', () => {
+            if (!this.slashMenuVisible) {
+                // 延迟检查，确保 CodeMirror 已处理输入
+                setTimeout(() => this._checkSlashTrigger(), 0);
+            }
+        });
+
+        // 点击其他地方关闭菜单
         document.addEventListener('mousedown', (e) => {
             if (this.slashMenuVisible && !this.elements.slashMenu?.contains(e.target)) {
                 this._hideSlashMenu();
             }
+        });
+
+        // 编辑器失焦关闭菜单
+        view.dom.addEventListener('blur', () => {
+            setTimeout(() => {
+                if (this.slashMenuVisible && !this.elements.slashMenu?.matches(':hover')) {
+                    this._hideSlashMenu();
+                }
+            }, 150);
         });
     }
 
@@ -884,10 +908,22 @@ class App {
      * 检测 // 触发
      */
     _checkSlashTrigger() {
+        if (!this.editor?.view) return;
+
         const state = this.editor.view.state;
         const pos = state.selection.main.from;
-        if (pos >= 2 && state.sliceDoc(pos - 2, pos) === '//') {
-            this._showSlashMenu();
+
+        // 检查光标前两个字符是否是 //
+        if (pos >= 2) {
+            const twoChars = state.sliceDoc(pos - 2, pos);
+            if (twoChars === '//') {
+                // 保存触发位置（关键修复！）
+                this.slashTriggerPos = {
+                    start: pos - 2,
+                    end: pos
+                };
+                this._showSlashMenu();
+            }
         }
     }
 
@@ -895,13 +931,15 @@ class App {
      * 显示菜单
      */
     _showSlashMenu() {
-        if (!this.elements.slashMenu) return;
+        if (!this.elements.slashMenu || !this.editor?.view) return;
 
         this.slashMenuVisible = true;
         this.slashMenuIndex = 0;
 
         // 定位到光标
         const coords = this.editor.view.coordsAtPos(this.editor.view.state.selection.main.from);
+        if (!coords) return;
+
         const menu = this.elements.slashMenu;
         menu.style.display = 'block';
         menu.style.left = `${coords.left}px`;
@@ -915,6 +953,7 @@ class App {
      */
     _hideSlashMenu() {
         this.slashMenuVisible = false;
+        this.slashTriggerPos = null;
         if (this.elements.slashMenu) {
             this.elements.slashMenu.style.display = 'none';
         }
@@ -935,28 +974,30 @@ class App {
             </div>
         `).join('');
 
+        // 确保选中项可见
+        const activeItem = list.querySelector('.slash-menu-item.active');
+        if (activeItem) {
+            activeItem.scrollIntoView({ block: 'nearest' });
+        }
+
         list.querySelectorAll('.slash-menu-item').forEach(el => {
             el.addEventListener('click', () => this._execSlashCmd(+el.dataset.i));
         });
     }
 
     /**
-     * 处理菜单键盘
+     * 处理菜单导航
      */
-    _handleSlashKey(e) {
-        if (e.key === 'ArrowUp') {
-            e.preventDefault();
+    _handleSlashNavigation(key) {
+        if (key === 'ArrowUp') {
             this.slashMenuIndex = Math.max(0, this.slashMenuIndex - 1);
             this._renderSlashMenu();
-        } else if (e.key === 'ArrowDown') {
-            e.preventDefault();
+        } else if (key === 'ArrowDown') {
             this.slashMenuIndex = Math.min(this.slashCommands.length - 1, this.slashMenuIndex + 1);
             this._renderSlashMenu();
-        } else if (e.key === 'Enter') {
-            e.preventDefault();
+        } else if (key === 'Enter') {
             this._execSlashCmd(this.slashMenuIndex);
-        } else if (e.key === 'Escape') {
-            e.preventDefault();
+        } else if (key === 'Escape') {
             this._hideSlashMenu();
         }
     }
@@ -966,11 +1007,10 @@ class App {
      */
     _execSlashCmd(i) {
         const cmd = this.slashCommands[i];
-        if (!cmd || !this.editor?.view) return;
+        if (!cmd || !this.editor?.view || !this.slashTriggerPos) return;
 
         const view = this.editor.view;
-        const pos = view.state.selection.main.from;
-        const start = pos - 2; // // 起始位置
+        const { start, end } = this.slashTriggerPos;  // 使用保存的位置！
         const text = cmd.text;
 
         // 计算光标位置
@@ -979,7 +1019,7 @@ class App {
 
         // 单次 dispatch 替换 // 为格式文本
         view.dispatch({
-            changes: { from: start, to: pos, insert: text },
+            changes: { from: start, to: end, insert: text },
             selection: cmd.selectFrom !== undefined
                 ? { anchor: start + cmd.selectFrom, head: start + cmd.selectTo }
                 : { anchor }
