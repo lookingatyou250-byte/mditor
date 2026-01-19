@@ -66,9 +66,19 @@ class App {
         this._bindEvents();
         this._applyTheme();
         this._applySidebarMode();  // 应用默认侧边栏状态（隐藏）
+        this._initScrollbar();     // 初始化自定义滚动条
         this._checkInitialFile();
 
-        console.log('📝 mditor v2.8.1 initialized');
+        console.log('📝 mditor v2.9.9 initialized');
+    }
+
+    /**
+     * 初始化自定义滚动条
+     */
+    _initScrollbar() {
+        if (window.Scrollbar) {
+            Scrollbar.initContentScrollbar();
+        }
     }
 
     /**
@@ -676,6 +686,11 @@ class App {
 
                 // 初始化斜杠命令事件处理
                 this._initSlashCommands();
+
+                // 初始化编辑器滚动条
+                if (window.Scrollbar) {
+                    Scrollbar.initEditorScrollbar();
+                }
             } else if (this.editor) {
                 this.editor.setValue(this.currentContent);
             }

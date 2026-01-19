@@ -382,12 +382,12 @@
     flex: 1;
     overflow-y: auto;
     overflow-x: hidden;
-    padding: 40px 60px 100px;
+    padding: 40px 0 100px 60px; /* 右侧无padding，滚动条贴窗口边缘 */
     scroll-behavior: smooth;
     background-color: var(--bg-body);
 }
 
-/* 滚动条样式 - 悬停时显示 */
+/* 滚动条样式 - 默认隐藏，通过 JS 类控制显示 */
 .content-area::-webkit-scrollbar {
     width: 8px;
 }
@@ -402,11 +402,12 @@
     transition: background 0.2s;
 }
 
-.content-area:hover::-webkit-scrollbar-thumb {
+/* 滚动条可见状态 */
+.content-area.scrollbar-visible::-webkit-scrollbar-thumb {
     background: var(--text-tertiary);
 }
 
-.content-area::-webkit-scrollbar-thumb:hover {
+.content-area.scrollbar-visible::-webkit-scrollbar-thumb:hover {
     background: var(--text-secondary);
 }
 
@@ -425,6 +426,29 @@
 .editor-area .cm-scroller {
     overflow: auto;
     padding: 40px 60px 100px;
+}
+
+/* 编辑器滚动条 - 默认隐藏，通过 JS 类控制显示 */
+.editor-area .cm-scroller::-webkit-scrollbar {
+    width: 8px;
+}
+
+.editor-area .cm-scroller::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.editor-area .cm-scroller::-webkit-scrollbar-thumb {
+    background: transparent;
+    border-radius: 4px;
+    transition: background 0.2s;
+}
+
+.editor-area.scrollbar-visible .cm-scroller::-webkit-scrollbar-thumb {
+    background: var(--text-tertiary);
+}
+
+.editor-area.scrollbar-visible .cm-scroller::-webkit-scrollbar-thumb:hover {
+    background: var(--text-secondary);
 }
 
 /* 编辑器内容区宽度自适应 */
