@@ -100,6 +100,12 @@ ol {
     margin-bottom: 1.2em;
 }
 
+/* 连续的有序列表（带 start 属性）紧凑显示 */
+ol + ol,
+p + ol[start] {
+    margin-top: -0.6em;
+}
+
 li {
     margin-bottom: 0.4em;
     line-height: 1.7;
@@ -200,6 +206,9 @@ td>code {
     color: var(--text-code);
 }
 
+:root[data-theme="dark"] p>code,
+:root[data-theme="dark"] li>code,
+:root[data-theme="dark"] td>code,
 body[data-theme="dark"] p>code,
 body[data-theme="dark"] li>code,
 body[data-theme="dark"] td>code {

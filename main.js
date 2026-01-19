@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, dialog, ipcMain } = require('electron');
+const { app, BrowserWindow, Menu, dialog, ipcMain, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
@@ -174,6 +174,15 @@ ipcMain.on('new-window', () => {
     createWindow();
 });
 
+// 打开外部链接
+ipcMain.handle('open-external', async (event, url) => {
+    if (url && (url.startsWith('https://') || url.startsWith('http://'))) {
+        await shell.openExternal(url);
+        return true;
+    }
+    return false;
+});
+
 // 读取目录结构（用于文件树）
 ipcMain.handle('read-directory', async (event, dirPath) => {
     try {
@@ -195,6 +204,38 @@ ipcMain.handle('read-directory', async (event, dirPath) => {
     } catch (e) {
         return [];
     }
+});
+
+// 重命名文件
+ipcMain.handle('rename-file', async (event, { oldPath, newName }) => {
+    try {
+        const dir = path.dirname(oldPath);
+        const newPath = path.join(dir, newName);
+
+        // 检查新文件名是否已存在
+        if (fs.existsSync(newPath) && newPath !== oldPath) {
+            return { success: false, error: '文件名已存在' };
+        }
+
+        fs.renameSync(oldPath, newPath);
+
+        // 更新窗口状态
+        const state = windowStates.get(event.sender.id);
+        if (state) state.filePath = newPath;
+
+        return { success: true, filePath: newPath, fileName: newName };
+    } catch (e) {
+        return { success: false, error: e.message };
+    }
+});
+
+// 在文件夹中显示
+ipcMain.handle('show-in-folder', async (event, filePath) => {
+    if (filePath && fs.existsSync(filePath)) {
+        shell.showItemInFolder(filePath);
+        return true;
+    }
+    return false;
 });
 
 // 读取文件内容（用于文件树点击打开）
@@ -259,6 +300,45 @@ ipcMain.on('window-close', (event) => {
 ipcMain.handle('is-maximized', (event) => {
     const win = BrowserWindow.fromWebContents(event.sender);
     return win?.isMaximized() || false;
+});
+
+// 检查更新
+ipcMain.handle('check-for-updates', async () => {
+    try {
+        const https = require('https');
+        const currentVersion = require('./package.json').version;
+
+        return new Promise((resolve) => {
+            const options = {
+                hostname: 'api.github.com',
+                path: '/repos/lookingatyou250-byte/mditor/releases/latest',
+                headers: { 'User-Agent': 'mditor' }
+            };
+
+            https.get(options, (res) => {
+                let data = '';
+                res.on('data', chunk => data += chunk);
+                res.on('end', () => {
+                    try {
+                        const release = JSON.parse(data);
+                        const latestVersion = release.tag_name?.replace('v', '') || '';
+                        const hasUpdate = latestVersion && latestVersion !== currentVersion;
+                        resolve({
+                            hasUpdate,
+                            version: latestVersion,
+                            downloadUrl: release.html_url || 'https://github.com/lookingatyou250-byte/mditor/releases'
+                        });
+                    } catch {
+                        resolve({ hasUpdate: false });
+                    }
+                });
+            }).on('error', () => {
+                resolve({ hasUpdate: false });
+            });
+        });
+    } catch {
+        return { hasUpdate: false };
+    }
 });
 
 // ========== 应用生命周期 ==========

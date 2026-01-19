@@ -30,27 +30,72 @@ class App {
         // 自动保存定时器
         this.autoSaveTimer = null;
 
+        // 设置面板状态
+        this.settingsVisible = false;
+        this.fontSize = parseInt(localStorage.getItem('mditor-font-size')) || 16;
+
         // 斜杠命令
         this.slashMenuVisible = false;
         this.slashMenuIndex = 0;
         this.slashCommandsInitialized = false;
         this.slashTriggerPos = null;  // 保存 // 的位置
-        this.slashCommands = [
+        this.slashMenuExpanded = false;  // 是否展开全部
+
+        // 快捷命令（默认显示）
+        this.slashQuickCommands = [
             { icon: 'H1', label: '标题 1', hint: '# ', text: '# ' },
             { icon: 'H2', label: '标题 2', hint: '## ', text: '## ' },
-            { icon: 'H3', label: '标题 3', hint: '### ', text: '### ' },
-            { icon: 'B', label: '粗体', hint: '**文本**', text: '**文本**', selectFrom: 2, selectTo: 4 },
-            { icon: 'I', label: '斜体', hint: '*文本*', text: '*文本*', selectFrom: 1, selectTo: 3 },
-            { icon: '`', label: '代码', hint: '`代码`', text: '`代码`', selectFrom: 1, selectTo: 3 },
-            { icon: '```', label: '代码块', hint: '```', text: '```\n\n```', cursorOffset: -4 },
-            { icon: '>', label: '引用', hint: '> ', text: '> ' },
             { icon: '•', label: '列表', hint: '- ', text: '- ' },
-            { icon: '1.', label: '有序列表', hint: '1. ', text: '1. ' },
-            { icon: '☑', label: '任务', hint: '- [ ] ', text: '- [ ] ' },
-            { icon: '🔗', label: '链接', hint: '[文本](url)', text: '[](url)', cursorOffset: -6 },
-            { icon: '🖼', label: '图片', hint: '![](url)', text: '![](url)', cursorOffset: -6 },
-            { icon: '—', label: '分割线', hint: '---', text: '\n---\n' },
+            { icon: '>', label: '引用', hint: '> ', text: '> ' },
         ];
+
+        // 分组命令（查看全部）
+        this.slashCommandGroups = [
+            {
+                name: '标题',
+                commands: [
+                    { icon: 'H1', label: 'H1', hint: '# ', text: '# ' },
+                    { icon: 'H2', label: 'H2', hint: '## ', text: '## ' },
+                    { icon: 'H3', label: 'H3', hint: '### ', text: '### ' },
+                    { icon: 'H4', label: 'H4', hint: '#### ', text: '#### ' },
+                    { icon: 'H5', label: 'H5', hint: '##### ', text: '##### ' },
+                    { icon: 'H6', label: 'H6', hint: '###### ', text: '###### ' },
+                ]
+            },
+            {
+                name: '格式',
+                commands: [
+                    { icon: 'B', label: '粗体', hint: '**', text: '**文本**', selectFrom: 2, selectTo: 4 },
+                    { icon: 'I', label: '斜体', hint: '*', text: '*文本*', selectFrom: 1, selectTo: 3 },
+                    { icon: 'S', label: '删除', hint: '~~', text: '~~文本~~', selectFrom: 2, selectTo: 4 },
+                    { icon: '`', label: '代码', hint: '`', text: '`代码`', selectFrom: 1, selectTo: 3 },
+                    { icon: '==', label: '高亮', hint: '==', text: '==文本==', selectFrom: 2, selectTo: 4 },
+                ]
+            },
+            {
+                name: '结构',
+                commands: [
+                    { icon: '•', label: '列表', hint: '- ', text: '- ' },
+                    { icon: '1.', label: '有序', hint: '1. ', text: '1. ' },
+                    { icon: '☑', label: '任务', hint: '- [ ] ', text: '- [ ] ' },
+                    { icon: '>', label: '引用', hint: '> ', text: '> ' },
+                    { icon: '—', label: '分割', hint: '---', text: '\n---\n' },
+                ]
+            },
+            {
+                name: '高级',
+                commands: [
+                    { icon: '```', label: '代码块', hint: '```', text: '```\n\n```', cursorOffset: -4 },
+                    { icon: '📊', label: '表格', hint: '| |', text: '| 列1 | 列2 |\n|---|---|\n| 内容 | 内容 |\n', cursorOffset: 0 },
+                    { icon: '🔗', label: '链接', hint: '[]()', text: '[](url)', cursorOffset: -6 },
+                    { icon: '🖼', label: '图片', hint: '![]()', text: '![](url)', cursorOffset: -6 },
+                    { icon: '[^]', label: '脚注', hint: '[^1]', text: '[^1]\n\n[^1]: ', cursorOffset: 0 },
+                ]
+            }
+        ];
+
+        // 合并为平面列表（用于键盘导航）
+        this.slashCommands = this.slashQuickCommands;
 
         // DOM 元素缓存
         this.elements = {};
@@ -67,6 +112,7 @@ class App {
         this._applyTheme();
         this._applySidebarMode();  // 应用默认侧边栏状态（隐藏）
         this._initScrollbar();     // 初始化自定义滚动条
+        this._initSettings();      // 初始化设置
         this._checkInitialFile();
 
         console.log('📝 mditor v2.9.9 initialized');
@@ -120,15 +166,38 @@ class App {
             outlinePanel: document.getElementById('outline-panel'),
             filetreePanel: document.getElementById('filetree-panel'),
 
+            // 欢迎页
+            welcomePage: document.getElementById('welcome-page'),
+            welcomeNew: document.getElementById('welcome-new'),
+            welcomeOpen: document.getElementById('welcome-open'),
+
             // 编辑器
             editorContainer: document.getElementById('editor'),
 
             // 状态栏
             wordCount: document.getElementById('word-count'),
             currentMode: document.getElementById('current-mode'),
+            brandLink: document.getElementById('brand-link'),
 
             // 斜杠菜单
             slashMenu: document.getElementById('slash-menu'),
+
+            // 文件菜单
+            fileMenuBtn: document.getElementById('file-menu-btn'),
+            fileDropdown: document.getElementById('file-dropdown'),
+            fileRenameInput: document.getElementById('file-rename-input'),
+
+            // 设置面板
+            settingsBtn: document.getElementById('settings-toggle'),
+            settingsPanel: document.getElementById('settings-panel'),
+            settingsClose: document.getElementById('settings-close'),
+            settingsOverlay: document.querySelector('.settings-overlay'),
+            fontSizeSlider: document.getElementById('font-size-slider'),
+            fontSizeValue: document.getElementById('font-size-value'),
+            fontSizeDec: document.getElementById('font-size-dec'),
+            fontSizeInc: document.getElementById('font-size-inc'),
+            checkUpdateBtn: document.getElementById('check-update-btn'),
+            appVersion: document.getElementById('app-version'),
         };
     }
 
@@ -198,6 +267,93 @@ class App {
         this.elements.focusBtn?.addEventListener('click', () => {
             this._toggleFocusMode();
         });
+
+        // 品牌链接点击 → 打开官网
+        this.elements.brandLink?.addEventListener('click', (e) => {
+            e.preventDefault();
+            window.electronAPI?.openExternal?.('https://github.com/erwinchang86/mditor')
+                || window.open('https://github.com/erwinchang86/mditor', '_blank');
+        });
+
+        // 文件菜单按钮
+        this.elements.fileMenuBtn?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this._toggleFileDropdown();
+        });
+
+        // 文件下拉菜单项
+        this.elements.fileDropdown?.querySelectorAll('.file-dropdown-item').forEach(item => {
+            item.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this._handleFileDropdownAction(item.dataset.action);
+            });
+        });
+
+        // 点击外部关闭下拉菜单
+        document.addEventListener('click', () => {
+            this._hideFileDropdown();
+        });
+    }
+
+    /**
+     * 切换文件下拉菜单
+     */
+    _toggleFileDropdown() {
+        const dropdown = this.elements.fileDropdown;
+        if (!dropdown) return;
+
+        const isVisible = dropdown.style.display !== 'none';
+        if (isVisible) {
+            this._hideFileDropdown();
+        } else {
+            this._showFileDropdown();
+        }
+    }
+
+    /**
+     * 显示文件下拉菜单
+     */
+    _showFileDropdown() {
+        const dropdown = this.elements.fileDropdown;
+        if (!dropdown) return;
+
+        // 更新菜单项状态
+        const showInFolderItem = dropdown.querySelector('[data-action="show-in-folder"]');
+        if (showInFolderItem) {
+            showInFolderItem.classList.toggle('disabled', !this.currentFilePath);
+        }
+
+        dropdown.style.display = 'block';
+    }
+
+    /**
+     * 隐藏文件下拉菜单
+     */
+    _hideFileDropdown() {
+        if (this.elements.fileDropdown) {
+            this.elements.fileDropdown.style.display = 'none';
+        }
+    }
+
+    /**
+     * 处理文件下拉菜单动作
+     */
+    async _handleFileDropdownAction(action) {
+        this._hideFileDropdown();
+
+        switch (action) {
+            case 'save':
+                this._saveFile(false);
+                break;
+            case 'save-as':
+                this._saveFile(true);
+                break;
+            case 'show-in-folder':
+                if (this.currentFilePath && window.electronAPI?.showInFolder) {
+                    await window.electronAPI.showInFolder(this.currentFilePath);
+                }
+                break;
+        }
     }
 
     /**
@@ -224,9 +380,113 @@ class App {
             // 新文件：触发另存为
             this._saveFile(true);
         } else {
-            // 已保存文件：显示完整路径提示
-            this._showToast(this.currentFilePath, 'info');
+            // 已保存文件：进入重命名模式
+            this._startRename();
         }
+    }
+
+    /**
+     * 开始重命名
+     */
+    _startRename() {
+        if (!this.currentFilePath) return;
+
+        const input = this.elements.fileRenameInput;
+        const fileNameEl = this.elements.fileName;
+        if (!input || !fileNameEl) return;
+
+        // 获取当前文件名
+        const currentName = fileNameEl.textContent;
+
+        // 隐藏文件名，显示输入框
+        fileNameEl.style.display = 'none';
+        this.elements.fileMenuBtn.style.display = 'none';
+        this.elements.saveIndicator.style.display = 'none';
+
+        input.value = currentName;
+        input.style.display = 'block';
+        input.focus();
+
+        // 选中文件名（不含扩展名）
+        const dotIndex = currentName.lastIndexOf('.');
+        if (dotIndex > 0) {
+            input.setSelectionRange(0, dotIndex);
+        } else {
+            input.select();
+        }
+
+        // 绑定事件
+        const handleBlur = () => this._finishRename();
+        const handleKeydown = (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                this._finishRename();
+            } else if (e.key === 'Escape') {
+                this._cancelRename();
+            }
+        };
+
+        input.addEventListener('blur', handleBlur, { once: true });
+        input.addEventListener('keydown', handleKeydown);
+
+        // 保存清理函数
+        input._cleanup = () => {
+            input.removeEventListener('keydown', handleKeydown);
+        };
+    }
+
+    /**
+     * 完成重命名
+     */
+    async _finishRename() {
+        const input = this.elements.fileRenameInput;
+        if (!input || input.style.display === 'none') return;
+
+        const newName = input.value.trim();
+        const oldName = this.elements.fileName.textContent;
+
+        // 清理
+        input._cleanup?.();
+        input.style.display = 'none';
+        this.elements.fileName.style.display = '';
+        this.elements.fileMenuBtn.style.display = '';
+        this.elements.saveIndicator.style.display = '';
+
+        // 如果名称相同或为空，取消
+        if (!newName || newName === oldName) return;
+
+        // 确保有扩展名
+        let finalName = newName;
+        if (!finalName.includes('.')) {
+            finalName += '.md';
+        }
+
+        // 执行重命名
+        if (window.electronAPI?.renameFile) {
+            const result = await window.electronAPI.renameFile(this.currentFilePath, finalName);
+            if (result.success) {
+                this.currentFilePath = result.filePath;
+                this.elements.fileName.textContent = result.fileName;
+                this._showToast(`已重命名为: ${result.fileName}`, 'success');
+                this._loadFileTree();
+            } else {
+                this._showToast(`重命名失败: ${result.error}`, 'error');
+            }
+        }
+    }
+
+    /**
+     * 取消重命名
+     */
+    _cancelRename() {
+        const input = this.elements.fileRenameInput;
+        if (!input) return;
+
+        input._cleanup?.();
+        input.style.display = 'none';
+        this.elements.fileName.style.display = '';
+        this.elements.fileMenuBtn.style.display = '';
+        this.elements.saveIndicator.style.display = '';
     }
 
     /**
@@ -320,14 +580,27 @@ class App {
                 console.error('Failed to get initial file:', e);
             }
         }
-        // 无初始文件，显示欢迎页
+        // 无初始文件，显示欢迎页内容
         this._loadDemo();
+    }
+
+    /**
+     * 隐藏欢迎页
+     */
+    _hideWelcome() {
+        if (this.elements.welcomePage) {
+            this.elements.welcomePage.style.display = 'none';
+        }
     }
 
     /**
      * 文件加载处理
      */
     _onFileLoaded(content, fileName) {
+        // 隐藏欢迎页，显示内容区
+        this._hideWelcome();
+        this.elements.content.style.display = 'block';
+
         this.currentContent = content;
         this.hasUnsavedChanges = false;
 
@@ -374,6 +647,9 @@ class App {
      * 新建文件
      */
     _newFile() {
+        // 隐藏欢迎页
+        this._hideWelcome();
+
         this.currentContent = '';
         this.currentFilePath = null;
 
@@ -854,6 +1130,16 @@ class App {
 
 ---
 
+## 核心特色
+
+### // 斜杠命令
+编辑时输入 //，所有格式触手可及，无需记忆快捷键。
+
+### 点击文件名
+新建后点击文件名即可保存，这是最自然的位置。
+
+---
+
 ## 快捷键
 
 | 快捷键 | 功能 |
@@ -871,7 +1157,6 @@ class App {
 
 - **无边框窗口** - 沉浸式写作体验
 - **实时自动保存** - 2秒无操作自动保存
-- **斜杠命令** - 输入 \`//\` 快速插入格式
 - **聚焦模式** - 点击右上角靶心图标，专注当前段落
 - **暗色主题** - 点击右上角月亮/太阳图标切换
 
@@ -886,18 +1171,7 @@ class App {
 
 ---
 
-## 斜杠命令
-
-在编辑模式下输入 \`//\` 可快速插入：
-
-- 标题（H1-H3）
-- **粗体**、*斜体*、\`代码\`
-- 引用、列表、任务
-- 链接、图片、分割线
-
----
-
-> 享受写作的乐趣！✨
+> 享受写作的乐趣。
 `;
         this._onFileLoaded(demoContent, '欢迎');
     }
@@ -972,6 +1246,7 @@ class App {
         view.dom.addEventListener('keydown', (e) => {
             if (this.slashMenuVisible) {
                 if (e.key === 'ArrowUp' || e.key === 'ArrowDown' ||
+                    e.key === 'ArrowLeft' || e.key === 'ArrowRight' ||
                     e.key === 'Enter' || e.key === 'Escape') {
                     e.preventDefault();
                     e.stopPropagation();
@@ -1047,6 +1322,8 @@ class App {
     _hideSlashMenu() {
         this.slashMenuVisible = false;
         this.slashTriggerPos = null;
+        this.slashMenuExpanded = false;
+        this.slashCommands = this.slashQuickCommands;
         if (this.elements.slashMenu) {
             this.elements.slashMenu.style.display = 'none';
         }
@@ -1059,7 +1336,20 @@ class App {
         const list = this.elements.slashMenu?.querySelector('.slash-menu-list');
         if (!list) return;
 
-        list.innerHTML = this.slashCommands.map((cmd, i) => `
+        if (this.slashMenuExpanded) {
+            // 展开模式：显示分组
+            this._renderExpandedMenu(list);
+        } else {
+            // 快捷模式：显示快捷命令 + 查看全部
+            this._renderQuickMenu(list);
+        }
+    }
+
+    /**
+     * 渲染快捷菜单
+     */
+    _renderQuickMenu(list) {
+        let html = this.slashQuickCommands.map((cmd, i) => `
             <div class="slash-menu-item${i === this.slashMenuIndex ? ' active' : ''}" data-i="${i}">
                 <span class="slash-menu-icon">${cmd.icon}</span>
                 <span class="slash-menu-label">${cmd.label}</span>
@@ -1067,31 +1357,136 @@ class App {
             </div>
         `).join('');
 
+        // 添加分割线和「查看全部」
+        html += `
+            <div class="slash-menu-divider"></div>
+            <div class="slash-menu-item slash-menu-expand${this.slashMenuIndex === this.slashQuickCommands.length ? ' active' : ''}" data-action="expand">
+                <span class="slash-menu-label">查看全部</span>
+                <span class="slash-menu-hint">→</span>
+            </div>
+        `;
+
+        list.innerHTML = html;
+        this._bindSlashMenuEvents(list);
+    }
+
+    /**
+     * 渲染展开菜单（分组）
+     */
+    _renderExpandedMenu(list) {
+        let html = `
+            <div class="slash-menu-item slash-menu-back" data-action="back">
+                <span class="slash-menu-icon">←</span>
+                <span class="slash-menu-label">返回</span>
+            </div>
+            <div class="slash-menu-divider"></div>
+        `;
+
+        let globalIndex = 0;
+        this.slashCommandGroups.forEach(group => {
+            html += `<div class="slash-menu-group">
+                <div class="slash-menu-group-name">${group.name}</div>
+                <div class="slash-menu-group-items">`;
+
+            group.commands.forEach(cmd => {
+                html += `
+                    <div class="slash-menu-chip${globalIndex === this.slashMenuIndex ? ' active' : ''}" data-i="${globalIndex}" title="${cmd.hint}">
+                        ${cmd.icon}
+                    </div>
+                `;
+                globalIndex++;
+            });
+
+            html += `</div></div>`;
+        });
+
+        list.innerHTML = html;
+        this._bindSlashMenuEvents(list);
+    }
+
+    /**
+     * 绑定菜单事件
+     */
+    _bindSlashMenuEvents(list) {
+        // 点击命令项
+        list.querySelectorAll('.slash-menu-item[data-i], .slash-menu-chip[data-i]').forEach(el => {
+            el.addEventListener('click', () => this._execSlashCmd(+el.dataset.i));
+        });
+
+        // 点击「查看全部」
+        list.querySelector('[data-action="expand"]')?.addEventListener('click', () => {
+            this.slashMenuExpanded = true;
+            this.slashMenuIndex = 0;
+            // 更新命令列表为展开模式的平面列表
+            this.slashCommands = this.slashCommandGroups.flatMap(g => g.commands);
+            this._renderSlashMenu();
+        });
+
+        // 点击「返回」
+        list.querySelector('[data-action="back"]')?.addEventListener('click', () => {
+            this.slashMenuExpanded = false;
+            this.slashMenuIndex = 0;
+            this.slashCommands = this.slashQuickCommands;
+            this._renderSlashMenu();
+        });
+
         // 确保选中项可见
-        const activeItem = list.querySelector('.slash-menu-item.active');
+        const activeItem = list.querySelector('.slash-menu-item.active, .slash-menu-chip.active');
         if (activeItem) {
             activeItem.scrollIntoView({ block: 'nearest' });
         }
-
-        list.querySelectorAll('.slash-menu-item').forEach(el => {
-            el.addEventListener('click', () => this._execSlashCmd(+el.dataset.i));
-        });
     }
 
     /**
      * 处理菜单导航
      */
     _handleSlashNavigation(key) {
+        const maxIndex = this.slashMenuExpanded
+            ? this.slashCommands.length - 1
+            : this.slashQuickCommands.length;  // +1 for "查看全部"
+
         if (key === 'ArrowUp') {
             this.slashMenuIndex = Math.max(0, this.slashMenuIndex - 1);
             this._renderSlashMenu();
         } else if (key === 'ArrowDown') {
-            this.slashMenuIndex = Math.min(this.slashCommands.length - 1, this.slashMenuIndex + 1);
+            this.slashMenuIndex = Math.min(maxIndex, this.slashMenuIndex + 1);
             this._renderSlashMenu();
+        } else if (key === 'ArrowRight') {
+            // 右箭头：展开「查看全部」
+            if (!this.slashMenuExpanded) {
+                this.slashMenuExpanded = true;
+                this.slashMenuIndex = 0;
+                this.slashCommands = this.slashCommandGroups.flatMap(g => g.commands);
+                this._renderSlashMenu();
+            }
+        } else if (key === 'ArrowLeft') {
+            // 左箭头：返回快捷模式
+            if (this.slashMenuExpanded) {
+                this.slashMenuExpanded = false;
+                this.slashMenuIndex = 0;
+                this.slashCommands = this.slashQuickCommands;
+                this._renderSlashMenu();
+            }
         } else if (key === 'Enter') {
-            this._execSlashCmd(this.slashMenuIndex);
+            // 在快捷模式下，选中「查看全部」时展开
+            if (!this.slashMenuExpanded && this.slashMenuIndex === this.slashQuickCommands.length) {
+                this.slashMenuExpanded = true;
+                this.slashMenuIndex = 0;
+                this.slashCommands = this.slashCommandGroups.flatMap(g => g.commands);
+                this._renderSlashMenu();
+            } else {
+                this._execSlashCmd(this.slashMenuIndex);
+            }
         } else if (key === 'Escape') {
-            this._hideSlashMenu();
+            if (this.slashMenuExpanded) {
+                // 返回快捷模式
+                this.slashMenuExpanded = false;
+                this.slashMenuIndex = 0;
+                this.slashCommands = this.slashQuickCommands;
+                this._renderSlashMenu();
+            } else {
+                this._hideSlashMenu();
+            }
         }
     }
 
@@ -1120,6 +1515,170 @@ class App {
 
         this._hideSlashMenu();
         view.focus();
+    }
+
+    // ========== 设置面板 ==========
+
+    /**
+     * 初始化设置
+     */
+    _initSettings() {
+        this._bindSettingsEvents();
+        this._applyFontSize();
+    }
+
+    /**
+     * 绑定设置事件
+     */
+    _bindSettingsEvents() {
+        // 打开设置
+        this.elements.settingsBtn?.addEventListener('click', () => {
+            this._showSettings();
+        });
+
+        // 关闭设置
+        this.elements.settingsClose?.addEventListener('click', () => {
+            this._hideSettings();
+        });
+
+        this.elements.settingsOverlay?.addEventListener('click', () => {
+            this._hideSettings();
+        });
+
+        // ESC 关闭设置
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && this.settingsVisible) {
+                this._hideSettings();
+            }
+        });
+
+        // 字号滑块
+        this.elements.fontSizeSlider?.addEventListener('input', (e) => {
+            this.fontSize = parseInt(e.target.value);
+            this._updateFontSizeUI();
+            this._applyFontSize();
+            this._saveFontSize();
+        });
+
+        // 字号 +/- 按钮
+        this.elements.fontSizeDec?.addEventListener('click', () => {
+            if (this.fontSize > 12) {
+                this.fontSize--;
+                this._updateFontSizeUI();
+                this._applyFontSize();
+                this._saveFontSize();
+            }
+        });
+
+        this.elements.fontSizeInc?.addEventListener('click', () => {
+            if (this.fontSize < 24) {
+                this.fontSize++;
+                this._updateFontSizeUI();
+                this._applyFontSize();
+                this._saveFontSize();
+            }
+        });
+
+        // 检查更新
+        this.elements.checkUpdateBtn?.addEventListener('click', () => {
+            this._checkForUpdates();
+        });
+    }
+
+    /**
+     * 显示设置面板
+     */
+    _showSettings() {
+        this.settingsVisible = true;
+        if (this.elements.settingsPanel) {
+            this.elements.settingsPanel.style.display = 'flex';
+        }
+        this._updateFontSizeUI();
+    }
+
+    /**
+     * 隐藏设置面板
+     */
+    _hideSettings() {
+        this.settingsVisible = false;
+        if (this.elements.settingsPanel) {
+            this.elements.settingsPanel.style.display = 'none';
+        }
+    }
+
+    /**
+     * 更新字号 UI
+     */
+    _updateFontSizeUI() {
+        if (this.elements.fontSizeSlider) {
+            this.elements.fontSizeSlider.value = this.fontSize;
+        }
+        if (this.elements.fontSizeValue) {
+            this.elements.fontSizeValue.textContent = `${this.fontSize}px`;
+        }
+    }
+
+    /**
+     * 应用字号
+     */
+    _applyFontSize() {
+        // 应用到编辑器
+        document.documentElement.style.setProperty('--editor-font-size', `${this.fontSize}px`);
+
+        // 如果编辑器已初始化，更新其样式
+        if (this.editor?.view) {
+            const scroller = this.elements.editorContainer?.querySelector('.cm-scroller');
+            if (scroller) {
+                scroller.style.fontSize = `${this.fontSize}px`;
+            }
+        }
+    }
+
+    /**
+     * 保存字号设置
+     */
+    _saveFontSize() {
+        localStorage.setItem('mditor-font-size', this.fontSize.toString());
+    }
+
+    /**
+     * 检查更新
+     */
+    async _checkForUpdates() {
+        const btn = this.elements.checkUpdateBtn;
+        if (!btn) return;
+
+        btn.classList.add('loading');
+        btn.textContent = '检查中...';
+
+        try {
+            if (window.electronAPI?.checkForUpdates) {
+                const result = await window.electronAPI.checkForUpdates();
+                if (result.hasUpdate) {
+                    btn.textContent = `发现新版本 ${result.version}`;
+                    btn.onclick = () => {
+                        window.electronAPI.openExternal(result.downloadUrl);
+                    };
+                } else {
+                    btn.textContent = '已是最新版本';
+                    setTimeout(() => {
+                        btn.textContent = '检查更新';
+                        btn.classList.remove('loading');
+                    }, 2000);
+                }
+            } else {
+                // 非 Electron 环境，打开 GitHub releases
+                window.open('https://github.com/erwinchang86/mditor/releases', '_blank');
+                btn.textContent = '检查更新';
+                btn.classList.remove('loading');
+            }
+        } catch (e) {
+            btn.textContent = '检查失败';
+            btn.classList.remove('loading');
+            setTimeout(() => {
+                btn.textContent = '检查更新';
+            }, 2000);
+        }
     }
 }
 

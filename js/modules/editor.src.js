@@ -3,7 +3,7 @@
  * 源码编辑模式，风格化接近阅读模式
  */
 import { EditorState } from '@codemirror/state';
-import { EditorView, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter, drawSelection, rectangularSelection } from '@codemirror/view';
+import { EditorView, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter, drawSelection, rectangularSelection, placeholder } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
 import { markdown } from '@codemirror/lang-markdown';
 import { syntaxHighlighting, defaultHighlightStyle, bracketMatching } from '@codemirror/language';
@@ -12,7 +12,7 @@ import { oneDark } from '@codemirror/theme-one-dark';
 // 自定义主题配置 - 匹配 mditor 的阅读模式风格
 const mditorTheme = EditorView.theme({
     '&': {
-        fontSize: '16px',
+        fontSize: 'var(--editor-font-size, 16px)',
         fontFamily: '"Noto Serif SC", Georgia, serif',
         backgroundColor: 'transparent'
     },
@@ -59,7 +59,12 @@ const mditorTheme = EditorView.theme({
     '.cm-strikethrough': { textDecoration: 'line-through' },
     '.cm-link': { color: 'var(--color-primary)', textDecoration: 'underline' },
     '.cm-url': { color: 'var(--color-text-secondary)', fontFamily: '"JetBrains Mono", monospace', fontSize: '0.9em' },
-    '.cm-monospace': { fontFamily: '"JetBrains Mono", monospace', fontSize: '0.9em' }
+    '.cm-monospace': { fontFamily: '"JetBrains Mono", monospace', fontSize: '0.9em' },
+    // 幽灵提示样式
+    '.cm-placeholder': {
+        color: 'var(--text-tertiary, #b2bec3)',
+        fontStyle: 'italic'
+    }
 }, { dark: false });
 
 // 暗色模式覆盖
@@ -118,6 +123,9 @@ class MditorEditor {
 
             // 自动换行
             EditorView.lineWrapping,
+
+            // 幽灵提示（空文档时显示）
+            placeholder('输入 // 插入格式...'),
 
             // 内容变化监听
             EditorView.updateListener.of(update => {

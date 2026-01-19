@@ -23,6 +23,9 @@
   /* 侧边栏宽度 */
   --sidebar-width: 280px;
   --toolbar-height: 50px;
+
+  /* 编辑器字号（可被 JS 覆盖） */
+  --editor-font-size: 16px;
 }
 
 /* 亮色主题 (默认) */
@@ -53,7 +56,8 @@
   --shadow-float: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -2px rgba(0, 0, 0, 0.04);
 }
 
-/* 暗色主题 - 通过 body[data-theme="dark"] 触发 */
+/* 暗色主题 - 通过 :root 或 body 的 data-theme="dark" 触发 */
+:root[data-theme="dark"],
 body[data-theme="dark"] {
   /* 基础背景与文字 */
   --bg-body: #1e1e1e;

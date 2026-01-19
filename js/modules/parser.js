@@ -74,6 +74,13 @@ class MarkdownParser {
             return `<h${level} id="${id}">${text}</h${level}>`;
         };
 
+        // 有序列表：保留 start 属性
+        renderer.list = (body, ordered, start) => {
+            const tag = ordered ? 'ol' : 'ul';
+            const startAttr = (ordered && start !== 1) ? ` start="${start}"` : '';
+            return `<${tag}${startAttr}>${body}</${tag}>`;
+        };
+
         marked.use({ renderer });
     }
 
@@ -121,7 +128,7 @@ class MarkdownParser {
 
         return DOMPurify.sanitize(html, {
             ALLOWED_TAGS: ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'span', 'div', 'ul', 'ol', 'li', 'blockquote', 'pre', 'code', 'a', 'img', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'strong', 'em', 'del', 'br', 'hr', 'input', 'figure', 'figcaption'],
-            ALLOWED_ATTR: ['href', 'title', 'class', 'id', 'src', 'alt', 'loading', 'type', 'checked', 'disabled', 'target', 'rel', 'style', 'data-lang'],
+            ALLOWED_ATTR: ['href', 'title', 'class', 'id', 'src', 'alt', 'loading', 'type', 'checked', 'disabled', 'target', 'rel', 'style', 'data-lang', 'start'],
             FORBID_TAGS: ['script', 'style', 'iframe', 'form', 'object', 'embed'],
             FORBID_ATTR: ['onerror', 'onclick', 'onload', 'onmouseover', 'onfocus', 'onblur'],
             ALLOW_DATA_ATTR: true

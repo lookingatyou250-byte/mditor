@@ -15,6 +15,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // 读取文件
     readFile: (filePath) => ipcRenderer.invoke('read-file', filePath),
 
+    // 重命名文件
+    renameFile: (oldPath, newName) => ipcRenderer.invoke('rename-file', { oldPath, newName }),
+
+    // 在文件夹中显示
+    showInFolder: (filePath) => ipcRenderer.invoke('show-in-folder', filePath),
+
     // ===== 文件树 =====
     // 读取目录
     readDirectory: (dirPath) => ipcRenderer.invoke('read-directory', dirPath),
@@ -52,5 +58,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
 
     // 平台检测
-    platform: process.platform
+    platform: process.platform,
+
+    // 打开外部链接
+    openExternal: (url) => ipcRenderer.invoke('open-external', url),
+
+    // 检查更新
+    checkForUpdates: () => ipcRenderer.invoke('check-for-updates')
 });
