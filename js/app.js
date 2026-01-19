@@ -115,7 +115,7 @@ class App {
         this._initSettings();      // 初始化设置
         this._checkInitialFile();
 
-        console.log('📝 mditor v2.9.9 initialized');
+        console.log('📝 mditor v3.0.0 initialized');
     }
 
     /**
@@ -232,6 +232,20 @@ class App {
         this._bindKeyboardShortcuts();
         this._bindWindowControls();
         this._bindSidebarTabs();
+
+        // 跨窗口主题同步：监听其他窗口的 localStorage 变化
+        window.addEventListener('storage', (e) => {
+            if (e.key === 'md-reader-theme' && e.newValue) {
+                const newTheme = e.newValue;
+                if (newTheme !== this.state.get('ui.theme')) {
+                    this.state.set('ui.theme', newTheme);
+                    this._applyTheme();
+                    if (this.editor) {
+                        this.editor.setDarkMode(newTheme === 'dark');
+                    }
+                }
+            }
+        });
     }
 
     /**

@@ -12,7 +12,14 @@ if (process.platform !== 'darwin') {
     const args = process.argv.slice(1);
     launchFilePath = args.find(arg => {
         const cleaned = arg.replace(/^"|"$/g, '').trim();
-        return cleaned && !cleaned.startsWith('--') && !cleaned.startsWith('-') && fs.existsSync(cleaned);
+        // 检查是否存在且是文件（不是目录）
+        if (!cleaned || cleaned.startsWith('--') || cleaned.startsWith('-')) return false;
+        try {
+            const stat = fs.statSync(cleaned);
+            return stat.isFile();
+        } catch {
+            return false;
+        }
     });
     if (launchFilePath) {
         launchFilePath = launchFilePath.replace(/^"|"$/g, '').trim();
