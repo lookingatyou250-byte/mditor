@@ -133,8 +133,6 @@ class App {
         this._initSettings();      // 初始化设置
         this._loadCustomColors();  // 加载自定义颜色
         this._checkInitialFile();
-
-        console.log('📝 mditor v3.0.0 initialized');
     }
 
     /**
@@ -383,12 +381,8 @@ class App {
         // 高亮触发图标点击事件
         this.elements.highlightTrigger?.addEventListener('click', (e) => {
             e.stopPropagation();
-            console.log('触发图标被点击，_currentSelectionRange:', this._currentSelectionRange);
             if (this._currentSelectionRange) {
-                console.log('选区有效，展开颜色选择器');
                 this._showHighlightPickerForReadMode(this._currentSelectionRange);
-            } else {
-                console.log('选区无效！');
             }
         });
     }
@@ -2105,7 +2099,18 @@ class App {
 
         // 确保选区在内容区域内
         const contentArea = this.elements.content;
-        if (!contentArea || !contentArea.contains(range.commonAncestorContainer)) {
+        if (!contentArea) {
+            return;
+        }
+
+        // 修复：检查选区是否在内容区域内（支持跨元素选择，包括标题）
+        // 检查 startContainer 和 endContainer 是否都在 contentArea 内
+        const startInContent = contentArea.contains(range.startContainer);
+        const endInContent = contentArea.contains(range.endContainer);
+        const commonInContent = contentArea.contains(range.commonAncestorContainer) ||
+                                range.commonAncestorContainer === contentArea;
+
+        if (!startInContent || !endInContent || !commonInContent) {
             return;
         }
 
@@ -2145,8 +2150,24 @@ class App {
 
             // 确保选区在 content-area 内
             const contentArea = this.elements.content;
-            if (!contentArea || !contentArea.contains(range.commonAncestorContainer)) {
-                console.warn('选区不在内容区域内');
+            if (!contentArea) {
+                console.warn('内容区域不存在');
+                return;
+            }
+
+            // 修复：更完善的选区检查（支持标题等跨元素选择）
+            const startInContent = contentArea.contains(range.startContainer);
+            const endInContent = contentArea.contains(range.endContainer);
+            const commonInContent = contentArea.contains(range.commonAncestorContainer) ||
+                                    range.commonAncestorContainer === contentArea;
+
+            if (!startInContent || !endInContent || !commonInContent) {
+                console.warn('选区不在内容区域内', {
+                    startInContent,
+                    endInContent,
+                    commonInContent,
+                    commonAncestor: range.commonAncestorContainer.nodeName
+                });
                 return;
             }
 
@@ -2294,7 +2315,9 @@ class App {
                 const startIndex = fullText.indexOf(targetText);
 
                 if (startIndex === -1) {
-                    console.warn('无法找到选区文本:', targetText.substring(0, 20));
+                    console.warn('无法找到选区文本:', targetText.substring(0, 50));
+                    console.warn('父元素:', parent.nodeName, '全文前100字符:', fullText.substring(0, 100));
+                    console.warn('目标文本长度:', targetText.length, '父元素文本长度:', fullText.length);
                     return null;
                 }
 
@@ -2336,30 +2359,169 @@ class App {
 
             const newRange = findTextRange(commonParent, savedText);
             if (!newRange) {
-                console.error('无法重新创建选区');
+                console.error('无法重新创建选区，commonParent:', commonParent.nodeName);
                 return;
             }
 
             // 5. 创建并应用新高亮
-            const mark = document.createElement('mark');
-            mark.className = 'temp-highlight';
-            mark.dataset.highlightColor = color;
-            this._applyHighlightColor(mark, color);
+            // 修复：检测是否跨块级元素，分别处理
+            const blockElements = ['P', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'LI', 'DIV', 'BLOCKQUOTE', 'PRE', 'UL', 'OL'];
 
-            try {
-                newRange.surroundContents(mark);
-            } catch (e) {
-                // 跨元素选择时使用 extractContents
-                const fragment = newRange.extractContents();
-                mark.appendChild(fragment);
-                newRange.insertNode(mark);
+            const isBlockElement = (node) => {
+                return node.nodeType === Node.ELEMENT_NODE &&
+                       blockElements.includes(node.tagName);
+            };
+
+            const getBlockParent = (node) => {
+                while (node && node !== contentArea) {
+                    if (isBlockElement(node)) return node;
+                    node = node.parentNode;
+                }
+                return null;
+            };
+
+            const startBlock = getBlockParent(newRange.startContainer);
+            const endBlock = getBlockParent(newRange.endContainer);
+
+            // 检查是否跨块级元素
+            if (startBlock !== endBlock) {
+                // 跨块级元素，需要对每个涉及的文本节点分别应用高亮
+                const textNodes = [];
+                const walker = document.createTreeWalker(
+                    commonParent,
+                    NodeFilter.SHOW_TEXT,
+                    {
+                        acceptNode: (node) => {
+                            // 只接受在选区内的文本节点
+                            if (newRange.intersectsNode(node) && node.textContent.trim()) {
+                                return NodeFilter.FILTER_ACCEPT;
+                            }
+                            return NodeFilter.FILTER_SKIP;
+                        }
+                    }
+                );
+
+                let node;
+                while (node = walker.nextNode()) {
+                    textNodes.push(node);
+                }
+
+                // 按块级父元素分组处理
+                const processedBlocks = new Set();
+                let firstMark = null;
+
+                for (const textNode of textNodes) {
+                    const blockParent = getBlockParent(textNode);
+                    if (!blockParent || processedBlocks.has(blockParent)) {
+                        continue;
+                    }
+
+                    // 创建一个范围来包含该块内的选中部分
+                    const blockRange = document.createRange();
+
+                    // 找到该块内第一个和最后一个相关的文本节点
+                    const nodesInBlock = textNodes.filter(n => getBlockParent(n) === blockParent);
+
+                    if (nodesInBlock.length === 0) continue;
+
+                    const firstNodeInBlock = nodesInBlock[0];
+                    const lastNodeInBlock = nodesInBlock[nodesInBlock.length - 1];
+
+                    // 设置范围的起点
+                    if (firstNodeInBlock === newRange.startContainer) {
+                        blockRange.setStart(firstNodeInBlock, newRange.startOffset);
+                    } else {
+                        blockRange.setStart(firstNodeInBlock, 0);
+                    }
+
+                    // 设置范围的终点
+                    if (lastNodeInBlock === newRange.endContainer) {
+                        blockRange.setEnd(lastNodeInBlock, newRange.endOffset);
+                    } else {
+                        blockRange.setEnd(lastNodeInBlock, lastNodeInBlock.textContent.length);
+                    }
+
+                    // 在该块内应用高亮
+                    const mark = document.createElement('mark');
+                    mark.className = 'temp-highlight';
+                    mark.dataset.highlightColor = color;
+                    this._applyHighlightColor(mark, color);
+
+                    try {
+                        blockRange.surroundContents(mark);
+
+                        if (!firstMark) {
+                            firstMark = mark;
+                        }
+                    } catch (e) {
+                        console.warn('块级元素', blockParent.tagName, '高亮失败:', e.message);
+                        // 如果 surroundContents 失败，尝试逐个文本节点包裹
+                        for (const node of nodesInBlock) {
+                            try {
+                                const singleRange = document.createRange();
+
+                                if (node === newRange.startContainer && node === newRange.endContainer) {
+                                    singleRange.setStart(node, newRange.startOffset);
+                                    singleRange.setEnd(node, newRange.endOffset);
+                                } else if (node === newRange.startContainer) {
+                                    singleRange.setStart(node, newRange.startOffset);
+                                    singleRange.setEnd(node, node.textContent.length);
+                                } else if (node === newRange.endContainer) {
+                                    singleRange.setStart(node, 0);
+                                    singleRange.setEnd(node, newRange.endOffset);
+                                } else {
+                                    singleRange.selectNodeContents(node);
+                                }
+
+                                const nodeMark = document.createElement('mark');
+                                nodeMark.className = 'temp-highlight';
+                                nodeMark.dataset.highlightColor = color;
+                                this._applyHighlightColor(nodeMark, color);
+
+                                singleRange.surroundContents(nodeMark);
+
+                                if (!firstMark) {
+                                    firstMark = nodeMark;
+                                }
+                            } catch (e2) {
+                                console.error('单个文本节点包裹失败:', e2.message);
+                            }
+                        }
+                    }
+
+                    processedBlocks.add(blockParent);
+                }
+
+                // 保存第一个创建的标记
+                this._lastCreatedMark = firstMark;
+
+            } else {
+                // 同一块级元素内，使用原有逻辑
+                const mark = document.createElement('mark');
+                mark.className = 'temp-highlight';
+                mark.dataset.highlightColor = color;
+                this._applyHighlightColor(mark, color);
+
+                try {
+                    newRange.surroundContents(mark);
+                } catch (e) {
+                    // 跨元素选择时使用 extractContents
+                    try {
+                        const fragment = newRange.extractContents();
+                        mark.appendChild(fragment);
+                        newRange.insertNode(mark);
+                    } catch (e2) {
+                        console.error('extractContents 也失败:', e2.message);
+                        throw e2;
+                    }
+                }
+
+                // 保存最近创建的标记（用于颜色更新）
+                this._lastCreatedMark = mark;
             }
 
             // 清除选区
             window.getSelection()?.removeAllRanges();
-
-            // 保存最近创建的标记（用于颜色更新）
-            this._lastCreatedMark = mark;
 
             // 标记高亮已修改
             this._highlightsModified = true;
@@ -2408,9 +2570,21 @@ class App {
             clearTimeout(this.highlightTriggerTimer);
         }
 
-        // 获取选区位置
-        const rect = range.getBoundingClientRect();
-        if (!rect || rect.width === 0) return;
+        // 获取选区位置（支持跨块级元素选择）
+        let rect = range.getBoundingClientRect();
+
+        // 如果 getBoundingClientRect 返回空矩形，尝试使用 getClientRects
+        if (!rect || (rect.width === 0 && rect.height === 0)) {
+            const rects = range.getClientRects();
+            if (rects && rects.length > 0) {
+                // 使用最后一个矩形（选区末尾）来定位触发图标
+                rect = rects[rects.length - 1];
+            }
+        }
+
+        if (!rect || (rect.width === 0 && rect.height === 0)) {
+            return;
+        }
 
         // 定位到选区右上角
         trigger.style.display = 'flex';
