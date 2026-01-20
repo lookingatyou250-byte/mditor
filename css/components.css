@@ -1044,3 +1044,420 @@
     opacity: 0.6;
     pointer-events: none;
 }
+
+/* ----------------------
+   Highlight Trigger Icon
+   ---------------------- */
+.highlight-trigger {
+    position: fixed;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: var(--bg-body);
+    border: 1px solid var(--bg-hover);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 1000;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+    animation: highlightTriggerIn 0.2s ease-out;
+}
+
+.highlight-trigger svg {
+    width: 12px;
+    height: 12px;
+    opacity: 0.7;
+    transition: opacity 0.15s ease;
+}
+
+.highlight-trigger:hover {
+    transform: scale(1.15);
+    box-shadow: 0 3px 12px rgba(0, 0, 0, 0.18);
+}
+
+.highlight-trigger:hover svg {
+    opacity: 1;
+}
+
+.highlight-trigger.fade-out {
+    animation: highlightTriggerOut 0.15s ease-out forwards;
+}
+
+@keyframes highlightTriggerIn {
+    from {
+        opacity: 0;
+        transform: scale(0.8);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+@keyframes highlightTriggerOut {
+    from {
+        opacity: 1;
+        transform: scale(1);
+    }
+    to {
+        opacity: 0;
+        transform: scale(0.8);
+    }
+}
+
+/* ----------------------
+   Highlight Color Picker
+   ---------------------- */
+.highlight-picker {
+    position: fixed;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background: var(--bg-body);
+    border: 1px solid var(--bg-hover);
+    border-radius: 20px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    z-index: 1001;
+    animation: highlightPickerIn 0.15s ease-out;
+}
+
+@keyframes highlightPickerIn {
+    from {
+        opacity: 0;
+        transform: translateY(8px) scale(0.95);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+.highlight-picker.fade-out {
+    animation: highlightPickerOut 0.2s ease-out forwards;
+}
+
+@keyframes highlightPickerOut {
+    from {
+        opacity: 1;
+        transform: translateY(0);
+    }
+    to {
+        opacity: 0;
+        transform: translateY(-4px);
+    }
+}
+
+.highlight-dot {
+    width: 16px;
+    height: 16px;
+    min-width: 16px;
+    min-height: 16px;
+    border-radius: 50%;
+    cursor: pointer;
+    transition: transform 0.15s, box-shadow 0.15s;
+    box-sizing: border-box;
+    flex-shrink: 0;
+}
+
+.highlight-dot:hover {
+    transform: scale(1.2);
+}
+
+.highlight-dot.active {
+    box-shadow: 0 0 0 2px var(--bg-body), 0 0 0 3px var(--text-secondary);
+}
+
+.highlight-add {
+    background: var(--bg-hover) !important;
+    color: var(--text-tertiary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.highlight-add svg {
+    width: 10px;
+    height: 10px;
+}
+
+.highlight-add:hover {
+    background: var(--bg-active) !important;
+    color: var(--text-secondary);
+}
+
+/* Color Add Popup */
+.color-add-popup {
+    position: fixed;
+    background: var(--bg-body);
+    border: 1px solid var(--bg-hover);
+    border-radius: 10px;
+    padding: 10px 12px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+    z-index: 1002;
+    animation: colorPopupIn 0.15s ease-out;
+}
+
+.color-add-hint {
+    font-size: 11px;
+    color: var(--text-tertiary);
+    margin-bottom: 8px;
+}
+
+.color-add-hint a {
+    color: var(--color-accent);
+    text-decoration: none;
+}
+
+.color-add-hint a:hover {
+    text-decoration: underline;
+}
+
+.color-add-input-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.color-preview {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--bg-hover);
+    flex-shrink: 0;
+    transition: background 0.15s;
+}
+
+.color-input {
+    width: 140px;
+    padding: 6px 10px;
+    border: 1px solid var(--bg-hover);
+    border-radius: 6px;
+    background: var(--bg-body);
+    color: var(--text-primary);
+    font-size: 12px;
+    font-family: var(--font-mono);
+    outline: none;
+    transition: border-color 0.15s;
+}
+
+.color-input:focus {
+    border-color: var(--color-accent);
+}
+
+.color-input::placeholder {
+    color: var(--text-tertiary);
+}
+
+@keyframes colorPopupIn {
+    from {
+        opacity: 0;
+        transform: translateY(4px) scale(0.95);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+.color-add-popup.fade-out {
+    animation: colorPopupOut 0.12s ease-out forwards;
+}
+
+@keyframes colorPopupOut {
+    from { opacity: 1; transform: scale(1); }
+    to { opacity: 0; transform: scale(0.95); }
+}
+
+/* Long-press delete animation */
+.highlight-dot.long-pressing {
+    animation: dotShake 0.5s ease-in-out infinite;
+    transform: scale(1.1);
+}
+
+@keyframes dotShake {
+    0%, 100% { transform: scale(1.1) rotate(-2deg); }
+    50% { transform: scale(1.1) rotate(2deg); }
+}
+
+.highlight-dot.deleting {
+    animation: deleteOut 0.3s ease-out forwards;
+}
+
+@keyframes deleteOut {
+    0% {
+        transform: scale(1);
+        opacity: 1;
+    }
+    100% {
+        transform: scale(0);
+        opacity: 0;
+    }
+}
+
+/* Dragging state */
+.highlight-dot.dragging {
+    position: fixed;
+    z-index: 2000;
+    cursor: grabbing;
+    pointer-events: none;
+    transform: scale(1.3);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+/* Delete zone */
+.delete-zone {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 100px;
+    height: 100px;
+    background: rgba(239, 68, 68, 0.1);
+    border: 2px dashed rgba(239, 68, 68, 0.3);
+    border-radius: 50%;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 1999;
+    transition: all 0.2s ease;
+    animation: deleteZoneIn 0.2s ease-out;
+}
+
+.delete-zone.active {
+    background: rgba(239, 68, 68, 0.2);
+    border-color: rgba(239, 68, 68, 0.6);
+    transform: translateX(-50%) scale(1.1);
+}
+
+.delete-zone svg {
+    width: 36px;
+    height: 36px;
+    color: rgba(239, 68, 68, 0.6);
+    transition: color 0.2s ease;
+}
+
+.delete-zone.active svg {
+    color: rgba(239, 68, 68, 0.9);
+}
+
+@keyframes deleteZoneIn {
+    from {
+        opacity: 0;
+        transform: translateX(-50%) scale(0.8);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(-50%) scale(1);
+    }
+}
+
+.delete-zone.fade-out {
+    animation: deleteZoneOut 0.2s ease-out forwards;
+}
+
+@keyframes deleteZoneOut {
+    from {
+        opacity: 1;
+        transform: translateX(-50%) scale(1);
+    }
+    to {
+        opacity: 0;
+        transform: translateX(-50%) scale(0.8);
+    }
+}
+
+/* ----------------------
+   Save Highlights Dialog
+   ---------------------- */
+.save-highlights-dialog {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.dialog-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(4px);
+}
+
+.dialog-content {
+    position: relative;
+    background: var(--bg-body);
+    border-radius: 12px;
+    padding: 24px;
+    width: 90%;
+    max-width: 400px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    animation: dialogSlideIn 0.2s ease-out;
+}
+
+@keyframes dialogSlideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.dialog-title {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0 0 12px 0;
+}
+
+.dialog-message {
+    font-size: 14px;
+    color: var(--text-secondary);
+    margin: 0 0 24px 0;
+    line-height: 1.5;
+}
+
+.dialog-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+}
+
+.dialog-btn {
+    padding: 8px 16px;
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+}
+
+.dialog-btn:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.dialog-btn.primary {
+    background: var(--color-accent);
+    color: white;
+}
+
+.dialog-btn.primary:hover {
+    opacity: 0.9;
+}

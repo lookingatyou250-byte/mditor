@@ -267,6 +267,29 @@ hr {
     margin: 2.5em 0;
 }
 
+/* Mark / Highlight (==text==) */
+.content-area mark {
+    background: var(--bg-mark);
+    padding: 0.1em 0.3em;
+    border-radius: 3px;
+    box-decoration-break: clone;
+    -webkit-box-decoration-break: clone;
+}
+
+/* 阅读模式临时高亮 */
+.content-area mark.temp-highlight {
+    cursor: pointer;
+    transition: opacity 0.2s ease;
+    padding: 0.1em 0.3em;
+    border-radius: 3px;
+    box-decoration-break: clone;
+    -webkit-box-decoration-break: clone;
+}
+
+.content-area mark.temp-highlight:hover {
+    opacity: 0.8;
+}
+
 /* Highlighting Logic for smooth scrolling */
 .highlight-flash {
     animation: flashHighlight 1.5s ease-out;

@@ -71,6 +71,22 @@ function createWindow(filePathToOpen = null) {
     // 保存 ID 用于清理（因为 closed 事件时 webContents 已销毁）
     const webContentsId = win.webContents.id;
 
+    // 窗口即将关闭时询问是否保存高亮
+    win.on('close', async (e) => {
+        e.preventDefault();  // 先阻止关闭
+
+        try {
+            // 询问渲染进程是否可以关闭
+            const canClose = await win.webContents.executeJavaScript('window.app?._handleWindowClose()');
+            if (canClose) {
+                win.destroy();  // 如果允许关闭，直接销毁窗口
+            }
+        } catch (error) {
+            console.error('检查关闭条件失败:', error);
+            win.destroy();  // 出错时直接关闭
+        }
+    });
+
     // 窗口关闭时清理状态
     win.on('closed', () => {
         windowStates.delete(webContentsId);

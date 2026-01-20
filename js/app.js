@@ -97,6 +97,24 @@ class App {
         // 合并为平面列表（用于键盘导航）
         this.slashCommands = this.slashQuickCommands;
 
+        // Bug 4 修复：高亮颜色优化，提升暗色模式下的可视性
+        this.highlightColors = {
+            amber: 'rgba(251, 191, 36, 0.4)',    // Warm yellow - 提高不透明度
+            emerald: 'rgba(52, 211, 153, 0.35)', // Soft green - 提高不透明度
+            sky: 'rgba(56, 189, 248, 0.35)',     // Light blue - 提高不透明度
+            rose: 'rgba(251, 113, 133, 0.35)',   // Gentle pink - 提高不透明度
+            violet: 'rgba(167, 139, 250, 0.4)'   // Soft purple - 提高不透明度
+        };
+        this.currentHighlightColor = localStorage.getItem('mditor-highlight-color') || 'amber';
+        this.highlightPickerVisible = false;
+        this.highlightTriggerVisible = false;
+        this.highlightPickerTimer = null;
+        this.highlightTriggerTimer = null;
+        this._selectionTimeout = null;
+        this._currentSelectionRange = null;
+        this._lastCreatedMark = null;  // 追踪最近创建的高亮标记
+        this._highlightsModified = false;  // 追踪高亮是否被修改
+
         // DOM 元素缓存
         this.elements = {};
     }
@@ -113,6 +131,7 @@ class App {
         this._applySidebarMode();  // 应用默认侧边栏状态（隐藏）
         this._initScrollbar();     // 初始化自定义滚动条
         this._initSettings();      // 初始化设置
+        this._loadCustomColors();  // 加载自定义颜色
         this._checkInitialFile();
 
         console.log('📝 mditor v3.0.0 initialized');
@@ -181,6 +200,13 @@ class App {
 
             // 斜杠菜单
             slashMenu: document.getElementById('slash-menu'),
+
+            // 高亮选择器
+            highlightTrigger: document.getElementById('highlight-trigger'),
+            highlightPicker: document.getElementById('highlight-picker'),
+            colorAddPopup: document.getElementById('color-add-popup'),
+            colorInput: document.getElementById('color-input'),
+            colorPreview: document.getElementById('color-preview'),
 
             // 文件菜单
             fileMenuBtn: document.getElementById('file-menu-btn'),
@@ -306,6 +332,64 @@ class App {
         // 点击外部关闭下拉菜单
         document.addEventListener('click', () => {
             this._hideFileDropdown();
+        });
+
+        // 阅读模式：双击临时高亮移除（修复 Bug 1）
+        this.elements.content?.addEventListener('dblclick', (e) => {
+            if (!this.isEditMode && e.target.tagName === 'MARK' && e.target.classList.contains('temp-highlight')) {
+                e.preventDefault();
+                this._removeReadModeHighlight(e.target);
+            }
+        });
+
+        // 阅读模式：选中文字自动浮现高亮触发图标
+        this.elements.content?.addEventListener('mouseup', (e) => {
+            // 只在阅读模式下响应
+            if (this.isEditMode) return;
+
+            // 延迟 150ms 检测选区，避免误触
+            if (this._selectionTimeout) {
+                clearTimeout(this._selectionTimeout);
+            }
+
+            this._selectionTimeout = setTimeout(() => {
+                this._handleReadModeSelection();
+            }, 150);
+        });
+
+        // 点击其他地方时隐藏
+        document.addEventListener('mousedown', (e) => {
+            // 如果点击的是触发图标、选择器或颜色添加弹窗，不隐藏
+            if (e.target.closest('.highlight-trigger') ||
+                e.target.closest('.highlight-picker') ||
+                e.target.closest('.color-add-popup')) {
+                return;
+            }
+            // 其他情况隐藏所有
+            if (this.highlightTriggerVisible && !this.isEditMode) {
+                this._hideHighlightTrigger();
+            }
+            if (this.highlightPickerVisible && !this.isEditMode) {
+                this._hideHighlightPicker();
+            }
+        });
+
+        // 高亮触发图标：阻止 mousedown 清除选区
+        this.elements.highlightTrigger?.addEventListener('mousedown', (e) => {
+            e.preventDefault(); // 阻止默认行为，保持选区
+            e.stopPropagation();
+        });
+
+        // 高亮触发图标点击事件
+        this.elements.highlightTrigger?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            console.log('触发图标被点击，_currentSelectionRange:', this._currentSelectionRange);
+            if (this._currentSelectionRange) {
+                console.log('选区有效，展开颜色选择器');
+                this._showHighlightPickerForReadMode(this._currentSelectionRange);
+            } else {
+                console.log('选区无效！');
+            }
         });
     }
 
@@ -574,6 +658,21 @@ class App {
                 e.preventDefault();
                 this._saveFile(true);
             }
+
+            // Ctrl+H 高亮
+            if (e.ctrlKey && !e.shiftKey && e.key === 'h') {
+                e.preventDefault();
+                this._toggleHighlight();
+            }
+
+            // Ctrl+Shift+H 保存高亮到本地
+            if (e.ctrlKey && e.shiftKey && e.key === 'H') {
+                e.preventDefault();
+                if (!this.isEditMode && this.currentFilePath) {
+                    this._saveHighlightsToPersistence();
+                    this._showToast('高亮已保存', 'success');
+                }
+            }
         });
     }
 
@@ -639,6 +738,13 @@ class App {
         }
 
         this._showToast(`已加载: ${fileName}`, 'success');
+
+        // 在阅读模式下，延迟加载持久化的高亮
+        if (!this.isEditMode) {
+            setTimeout(() => {
+                this._loadHighlightsFromPersistence();
+            }, 100);
+        }
     }
 
     /**
@@ -950,6 +1056,14 @@ class App {
             this.isEditMode = true;
             this._updateModeUI();
 
+            // 保存当前的高亮信息
+            this._saveHighlights();
+
+            // 清除阅读模式的临时高亮和触发器
+            this._clearAllReadModeHighlights();
+            this._hideHighlightTrigger();
+            this._hideHighlightPicker();
+
             this.elements.content.style.display = 'none';
             this.elements.editorContainer.style.display = 'block';
 
@@ -1002,6 +1116,17 @@ class App {
 
             this.elements.editorContainer.style.display = 'none';
             this.elements.content.style.display = 'block';
+
+            // 恢复之前保存的高亮（临时的，在模式切换时保存的）
+            this._restoreHighlights();
+
+            // 如果没有临时高亮，尝试从持久化存储加载
+            setTimeout(() => {
+                const allMarks = this.elements.content?.querySelectorAll('mark.temp-highlight');
+                if (!allMarks || allMarks.length === 0) {
+                    this._loadHighlightsFromPersistence();
+                }
+            }, 100);
         }
     }
 
@@ -1243,6 +1368,1778 @@ class App {
             });
             this.editor.focus();
         }
+    }
+
+    // ========== 高亮功能 ==========
+
+    /**
+     * 切换高亮（Ctrl+H）
+     */
+    _toggleHighlight() {
+        // 编辑模式：插入 ==text== 语法
+        if (this.isEditMode && this.editor?.view) {
+            const { from, to } = this.editor.view.state.selection.main;
+
+            // 有选中文本时，直接应用高亮并显示颜色选择器
+            if (from !== to) {
+                this._applyHighlight();
+                this._showHighlightPicker();
+            }
+            return;
+        }
+
+        // 阅读模式：临时高亮（不修改源文件）
+        if (!this.isEditMode) {
+            this._toggleReadModeHighlight();
+        }
+    }
+
+    /**
+     * 应用高亮
+     */
+    _applyHighlight(color = this.currentHighlightColor) {
+        if (!this.editor?.view) return;
+
+        const { from, to } = this.editor.view.state.selection.main;
+        const selected = this.editor.view.state.sliceDoc(from, to);
+
+        if (!selected) return;
+
+        // 用 == 包裹（标准 Markdown 高亮语法）
+        const newText = `==${selected}==`;
+        this.editor.view.dispatch({
+            changes: { from, to, insert: newText },
+            selection: { anchor: from + 2, head: from + 2 + selected.length }
+        });
+        this.editor.focus();
+    }
+
+    /**
+     * 显示颜色选择器
+     */
+    _showHighlightPicker() {
+        const picker = this.elements.highlightPicker;
+        if (!picker || !this.editor?.view) return;
+
+        // 清除之前的定时器
+        if (this.highlightPickerTimer) {
+            clearTimeout(this.highlightPickerTimer);
+        }
+
+        // 获取选区位置
+        const { from } = this.editor.view.state.selection.main;
+        const coords = this.editor.view.coordsAtPos(from);
+        if (!coords) return;
+
+        // 定位到选区上方
+        picker.style.display = 'flex';
+        picker.classList.remove('fade-out');
+
+        const pickerRect = picker.getBoundingClientRect();
+        const viewportWidth = window.innerWidth;
+        const viewportHeight = window.innerHeight;
+
+        // 计算位置并进行边界检查
+        let left = coords.left - pickerRect.width / 2 + 20;
+        let top = coords.top - 40;
+
+        // 左边界检查
+        if (left < 10) left = 10;
+        // 右边界检查
+        if (left + pickerRect.width > viewportWidth - 10) {
+            left = viewportWidth - pickerRect.width - 10;
+        }
+        // 上边界检查（如果上方放不下，放到下方）
+        if (top < 10) {
+            top = coords.bottom + 8;
+        }
+
+        picker.style.left = `${left}px`;
+        picker.style.top = `${top}px`;
+
+        // 标记当前颜色
+        picker.querySelectorAll('.highlight-dot').forEach(dot => {
+            dot.classList.toggle('active', dot.dataset.color === this.currentHighlightColor);
+        });
+
+        this.highlightPickerVisible = true;
+
+        // 2秒后自动隐藏
+        this.highlightPickerTimer = setTimeout(() => {
+            this._hideHighlightPicker();
+        }, 2000);
+
+        // 绑定键盘事件（只绑定一次）
+        if (!this._highlightPickerKeyboardBound) {
+            this._highlightPickerKeyboardBound = true;
+            this._bindHighlightPickerKeyboard();
+        }
+
+        // 确保事件已绑定
+        this._ensurePickerEventsBound(picker);
+    }
+
+    /**
+     * 确保颜色选择器事件已绑定（只绑定一次）
+     */
+    _ensurePickerEventsBound(picker) {
+        if (this._highlightPickerBound) return;
+        this._highlightPickerBound = true;
+
+        // 拖拽相关变量
+        let longPressTimer = null;
+        let longPressTarget = null;
+        let isDragging = false;
+        let dragClone = null;
+        let deleteZone = null;
+
+        // 获取或创建删除区域
+        const getDeleteZone = () => {
+            if (!deleteZone) {
+                deleteZone = document.getElementById('delete-zone');
+            }
+            return deleteZone;
+        };
+
+        // 显示删除区域
+        const showDeleteZone = () => {
+            const zone = getDeleteZone();
+            if (zone) {
+                zone.style.display = 'flex';
+                zone.classList.remove('fade-out');
+            }
+        };
+
+        // 隐藏删除区域
+        const hideDeleteZone = () => {
+            const zone = getDeleteZone();
+            if (zone) {
+                zone.classList.add('fade-out');
+                setTimeout(() => {
+                    zone.style.display = 'none';
+                    zone.classList.remove('fade-out', 'active');
+                }, 200);
+            }
+        };
+
+        // 检查是否在删除区域内
+        const isInDeleteZone = (x, y) => {
+            const zone = getDeleteZone();
+            if (!zone) return false;
+            const rect = zone.getBoundingClientRect();
+            return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
+        };
+
+        // 开始拖拽
+        const startDrag = (dot, clientX, clientY) => {
+            if (isDragging) return;
+            isDragging = true;
+
+            // 创建拖拽克隆
+            dragClone = dot.cloneNode(true);
+            dragClone.classList.add('dragging');
+            dragClone.classList.remove('long-pressing');
+            document.body.appendChild(dragClone);
+
+            // 设置初始位置（中心对齐）
+            dragClone.style.left = (clientX - 8) + 'px';
+            dragClone.style.top = (clientY - 8) + 'px';
+
+            // 隐藏原始元素
+            dot.style.opacity = '0.3';
+
+            // 显示删除区域
+            showDeleteZone();
+        };
+
+        // 更新拖拽位置
+        const updateDrag = (clientX, clientY) => {
+            if (!dragClone) return;
+
+            dragClone.style.left = (clientX - 8) + 'px';
+            dragClone.style.top = (clientY - 8) + 'px';
+
+            // 检查是否进入删除区域
+            const zone = getDeleteZone();
+            if (zone) {
+                if (isInDeleteZone(clientX, clientY)) {
+                    zone.classList.add('active');
+                } else {
+                    zone.classList.remove('active');
+                }
+            }
+        };
+
+        // 结束拖拽
+        const endDrag = (dot, clientX, clientY) => {
+            if (!isDragging) return;
+
+            const shouldDelete = isInDeleteZone(clientX, clientY);
+
+            // 移除拖拽克隆
+            if (dragClone) {
+                dragClone.remove();
+                dragClone = null;
+            }
+
+            // 恢复原始元素
+            dot.style.opacity = '';
+
+            // 隐藏删除区域
+            hideDeleteZone();
+
+            // 执行删除
+            if (shouldDelete) {
+                const color = dot.dataset.color;
+                if (color && color.startsWith('custom-')) {
+                    this._deleteCustomColor(color);
+                }
+            }
+
+            isDragging = false;
+        };
+
+        // 取消操作
+        const cancelOperation = () => {
+            if (longPressTimer) {
+                clearTimeout(longPressTimer);
+                longPressTimer = null;
+            }
+            if (longPressTarget) {
+                longPressTarget.classList.remove('long-pressing');
+                longPressTarget.style.opacity = '';
+                longPressTarget = null;
+            }
+            if (isDragging && dragClone) {
+                dragClone.remove();
+                dragClone = null;
+                hideDeleteZone();
+                isDragging = false;
+            }
+        };
+
+        // 鼠标事件
+        picker.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+
+            const dot = e.target.closest('.highlight-dot');
+            if (!dot || dot.dataset.action === 'add') return;
+
+            const color = dot.dataset.color;
+            // 只有自定义颜色可以长按拖拽删除
+            if (!color || !color.startsWith('custom-')) return;
+
+            // 开始长按计时
+            longPressTarget = dot;
+            dot.classList.add('long-pressing');
+
+            const startX = e.clientX;
+            const startY = e.clientY;
+
+            longPressTimer = setTimeout(() => {
+                // 500ms 后进入拖拽模式
+                startDrag(dot, startX, startY);
+                longPressTimer = null;
+            }, 500);
+        });
+
+        // 全局鼠标移动（处理拖拽）
+        document.addEventListener('mousemove', (e) => {
+            if (isDragging) {
+                updateDrag(e.clientX, e.clientY);
+            } else if (longPressTarget) {
+                // 如果还在长按阶段但鼠标移动了，取消长按
+                cancelOperation();
+            }
+        });
+
+        // 全局鼠标松开
+        document.addEventListener('mouseup', (e) => {
+            if (isDragging && longPressTarget) {
+                endDrag(longPressTarget, e.clientX, e.clientY);
+                longPressTarget = null;
+            } else {
+                cancelOperation();
+            }
+        });
+
+        // 触摸事件支持（移动端）
+        picker.addEventListener('touchstart', (e) => {
+            const dot = e.target.closest('.highlight-dot');
+            if (!dot || dot.dataset.action === 'add') return;
+
+            const color = dot.dataset.color;
+            // 只有自定义颜色可以长按拖拽删除
+            if (!color || !color.startsWith('custom-')) return;
+
+            const touch = e.touches[0];
+            longPressTarget = dot;
+            dot.classList.add('long-pressing');
+
+            const startX = touch.clientX;
+            const startY = touch.clientY;
+
+            longPressTimer = setTimeout(() => {
+                // 500ms 后进入拖拽模式
+                startDrag(dot, startX, startY);
+                longPressTimer = null;
+            }, 500);
+        });
+
+        // 触摸移动
+        document.addEventListener('touchmove', (e) => {
+            if (isDragging) {
+                e.preventDefault();
+                const touch = e.touches[0];
+                updateDrag(touch.clientX, touch.clientY);
+            } else if (longPressTarget) {
+                // 如果还在长按阶段但手指移动了，取消长按
+                cancelOperation();
+            }
+        }, { passive: false });
+
+        // 触摸结束
+        document.addEventListener('touchend', (e) => {
+            if (isDragging && longPressTarget) {
+                const touch = e.changedTouches[0];
+                endDrag(longPressTarget, touch.clientX, touch.clientY);
+                longPressTarget = null;
+            } else {
+                cancelOperation();
+            }
+        });
+
+        document.addEventListener('touchcancel', cancelOperation);
+
+        picker.addEventListener('click', (e) => {
+            const dot = e.target.closest('.highlight-dot');
+            if (!dot) return;
+
+            // 点击加号按钮
+            if (dot.dataset.action === 'add') {
+                this._showColorHint(dot);
+                return;
+            }
+
+            const color = dot.dataset.color;
+            if (color) {
+                this._setHighlightColor(color);
+
+                // 重置定时器
+                if (this.highlightPickerTimer) {
+                    clearTimeout(this.highlightPickerTimer);
+                }
+                this.highlightPickerTimer = setTimeout(() => {
+                    this._hideHighlightPicker();
+                }, 1500);
+            }
+        });
+
+        // 鼠标悬停时暂停计时
+        picker.addEventListener('mouseenter', () => {
+            if (this.highlightPickerTimer) {
+                clearTimeout(this.highlightPickerTimer);
+            }
+        });
+
+        picker.addEventListener('mouseleave', (e) => {
+            // Bug 2 修复：如果鼠标移动到颜色添加弹窗，不立即隐藏
+            const relatedTarget = e.relatedTarget;
+            if (relatedTarget && relatedTarget.closest && relatedTarget.closest('.color-add-popup')) {
+                return; // 鼠标移动到弹窗，保持显示
+            }
+            this._hideColorHint();
+            this.highlightPickerTimer = setTimeout(() => {
+                this._hideHighlightPicker();
+            }, 1000);
+        });
+    }
+
+    /**
+     * 隐藏颜色选择器
+     */
+    _hideHighlightPicker() {
+        const picker = this.elements.highlightPicker;
+        if (!picker) return;
+
+        // 清理定时器
+        if (this.highlightPickerTimer) {
+            clearTimeout(this.highlightPickerTimer);
+            this.highlightPickerTimer = null;
+        }
+
+        picker.classList.add('fade-out');
+        setTimeout(() => {
+            picker.style.display = 'none';
+            picker.classList.remove('fade-out');
+        }, 200);
+
+        this.highlightPickerVisible = false;
+
+        // 隐藏选择器后，清除选区
+        if (!this.isEditMode) {
+            const selection = window.getSelection();
+            selection?.removeAllRanges();
+            this._currentSelectionRange = null;
+        }
+    }
+
+    /**
+     * 绑定颜色选择器键盘事件
+     */
+    _bindHighlightPickerKeyboard() {
+        document.addEventListener('keydown', (e) => {
+            // 只在编辑模式下且选择器可见时响应键盘
+            // 阅读模式下不拦截方向键，避免影响正常浏览
+            if (!this.highlightPickerVisible || !this.isEditMode) return;
+
+            const picker = this.elements.highlightPicker;
+            if (!picker) return;
+
+            const colors = Array.from(picker.querySelectorAll('.highlight-dot[data-color]'));
+            const currentIndex = colors.findIndex(dot => dot.dataset.color === this.currentHighlightColor);
+
+            if (e.key === 'Escape') {
+                // Esc: 关闭选择器
+                e.preventDefault();
+                this._hideHighlightPicker();
+            } else if (e.key === 'ArrowLeft') {
+                // 左箭头: 切换到上一个颜色
+                e.preventDefault();
+                const prevIndex = currentIndex > 0 ? currentIndex - 1 : colors.length - 1;
+                const prevColor = colors[prevIndex]?.dataset.color;
+                if (prevColor) {
+                    this._setHighlightColor(prevColor);
+                }
+            } else if (e.key === 'ArrowRight') {
+                // 右箭头: 切换到下一个颜色
+                e.preventDefault();
+                const nextIndex = currentIndex < colors.length - 1 ? currentIndex + 1 : 0;
+                const nextColor = colors[nextIndex]?.dataset.color;
+                if (nextColor) {
+                    this._setHighlightColor(nextColor);
+                }
+            } else if (e.key === 'Enter') {
+                // Enter: 确认当前颜色并关闭
+                e.preventDefault();
+                this._hideHighlightPicker();
+                // 回到编辑器焦点
+                if (this.editor?.focus) {
+                    this.editor.focus();
+                }
+            }
+        });
+    }
+
+    /**
+     * 设置高亮颜色
+     */
+    _setHighlightColor(color) {
+        this.currentHighlightColor = color;
+        localStorage.setItem('mditor-highlight-color', color);
+
+        // 更新选中状态
+        const picker = this.elements.highlightPicker;
+        if (picker) {
+            picker.querySelectorAll('.highlight-dot').forEach(dot => {
+                dot.classList.toggle('active', dot.dataset.color === color);
+            });
+        }
+
+        // 阅读模式：点击颜色后自动应用高亮
+        if (!this.isEditMode) {
+            // 使用保存的选区
+            if (this._currentSelectionRange) {
+                this._applyReadModeHighlight(this._currentSelectionRange, color);
+                // 延迟隐藏选择器
+                if (this.highlightPickerTimer) {
+                    clearTimeout(this.highlightPickerTimer);
+                }
+                this.highlightPickerTimer = setTimeout(() => {
+                    this._hideHighlightPicker();
+                }, 500);
+                return;
+            }
+            // 如果没有保存的选区，更新最近添加的高亮颜色
+            this._updateLastReadModeHighlight(color);
+        }
+    }
+
+    /**
+     * 显示颜色添加弹窗
+     */
+    _showColorHint(targetEl) {
+        const popup = this.elements.colorAddPopup;
+        const input = this.elements.colorInput;
+        const preview = this.elements.colorPreview;
+        if (!popup || !input) return;
+
+        // 定位
+        const rect = targetEl.getBoundingClientRect();
+        popup.style.display = 'block';
+        popup.classList.remove('fade-out');
+        popup.style.left = `${rect.left - 100}px`;
+        popup.style.top = `${rect.bottom + 8}px`;
+
+        // 重置
+        input.value = '';
+        preview.style.background = 'var(--bg-hover)';
+
+        // 聚焦输入框
+        setTimeout(() => input.focus(), 50);
+
+        // 绑定事件（只绑定一次，避免重复绑定）
+        // 注意：事件监听器不会被移除，因为弹窗在整个应用生命周期中复用
+        // 如需完全清理，可在 App 类添加 destroy() 方法
+        if (!this._colorInputBound) {
+            this._colorInputBound = true;
+
+            // 实时预览颜色
+            input.addEventListener('input', () => {
+                const val = input.value.trim();
+                if (this._isValidColor(val)) {
+                    preview.style.background = val;
+                } else {
+                    preview.style.background = 'var(--bg-hover)';
+                }
+            });
+
+            // 回车添加颜色
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    this._addCustomColor(input.value.trim());
+                }
+                if (e.key === 'Escape') {
+                    this._hideColorHint();
+                }
+            });
+
+            // Bug 2 修复：鼠标进入弹窗时保持显示
+            popup.addEventListener('mouseenter', () => {
+                if (this.highlightPickerTimer) {
+                    clearTimeout(this.highlightPickerTimer);
+                }
+            });
+
+            // Bug 2 修复：鼠标离开弹窗时才隐藏
+            popup.addEventListener('mouseleave', () => {
+                this._hideColorHint();
+                // 同时隐藏颜色选择器
+                if (this.highlightPickerVisible) {
+                    this.highlightPickerTimer = setTimeout(() => {
+                        this._hideHighlightPicker();
+                    }, 500);
+                }
+            });
+        }
+    }
+
+    /**
+     * 隐藏颜色添加弹窗
+     */
+    _hideColorHint() {
+        const popup = this.elements.colorAddPopup;
+        if (!popup || popup.style.display === 'none') return;
+
+        popup.classList.add('fade-out');
+        setTimeout(() => {
+            popup.style.display = 'none';
+            popup.classList.remove('fade-out');
+        }, 120);
+    }
+
+    /**
+     * 验证颜色值
+     */
+    _isValidColor(color) {
+        if (!color) return false;
+        const s = new Option().style;
+        s.color = color;
+        return s.color !== '';
+    }
+
+    /**
+     * 添加自定义颜色
+     */
+    _addCustomColor(color) {
+        if (!this._isValidColor(color)) {
+            this._showToast('无效的颜色值', 'error');
+            return;
+        }
+
+        // 生成唯一名称
+        const name = 'custom-' + Date.now();
+
+        // 添加到颜色列表
+        this.highlightColors[name] = color;
+
+        // 创建新的颜色点
+        const picker = this.elements.highlightPicker;
+        const addBtn = picker.querySelector('.highlight-add');
+        const dot = document.createElement('div');
+        dot.className = 'highlight-dot';
+        dot.dataset.color = name;
+        dot.style.background = color;
+        dot.title = '自定义颜色 (长按删除)';
+        picker.insertBefore(dot, addBtn);
+
+        // 选中新颜色
+        this._setHighlightColor(name);
+
+        // 保存到 localStorage
+        this._saveCustomColors();
+
+        // 关闭弹窗
+        this._hideColorHint();
+
+        // 提示
+        this._showToast('颜色已添加');
+    }
+
+    /**
+     * 保存自定义颜色到 localStorage
+     */
+    _saveCustomColors() {
+        const customColors = {};
+        Object.keys(this.highlightColors).forEach(key => {
+            if (key.startsWith('custom-')) {
+                customColors[key] = this.highlightColors[key];
+            }
+        });
+        localStorage.setItem('mditor-custom-colors', JSON.stringify(customColors));
+    }
+
+    /**
+     * 从 localStorage 加载自定义颜色
+     */
+    _loadCustomColors() {
+        try {
+            const saved = localStorage.getItem('mditor-custom-colors');
+            if (!saved) {
+                return;
+            }
+
+            const customColors = JSON.parse(saved);
+
+            const picker = this.elements.highlightPicker;
+            if (!picker) {
+                console.warn('[Highlight] 颜色选择器元素未找到，无法加载自定义颜色');
+                return;
+            }
+
+            const addBtn = picker.querySelector('.highlight-add');
+
+            Object.entries(customColors).forEach(([name, color]) => {
+                // 添加到颜色列表
+                this.highlightColors[name] = color;
+
+                // 创建颜色点
+                const dot = document.createElement('div');
+                dot.className = 'highlight-dot';
+                dot.dataset.color = name;
+                dot.style.background = color;
+                dot.title = '自定义颜色 (长按删除)';
+                picker.insertBefore(dot, addBtn);
+            });
+        } catch (e) {
+            console.error('加载自定义颜色失败:', e);
+        }
+    }
+
+    /**
+     * 删除自定义颜色
+     */
+    _deleteCustomColor(colorName) {
+        // 只能删除自定义颜色
+        if (!colorName.startsWith('custom-')) {
+            return;
+        }
+
+        // 从颜色列表中移除
+        delete this.highlightColors[colorName];
+
+        // 从 DOM 中移除
+        const picker = this.elements.highlightPicker;
+        const dot = picker.querySelector(`.highlight-dot[data-color="${colorName}"]`);
+        if (dot) {
+            dot.classList.add('deleting');
+            setTimeout(() => {
+                dot.remove();
+            }, 300);
+        }
+
+        // 如果删除的是当前选中颜色，切换到默认颜色
+        if (this.currentHighlightColor === colorName) {
+            this._setHighlightColor('amber');
+        }
+
+        // 保存到 localStorage
+        this._saveCustomColors();
+
+        // 提示
+        this._showToast('颜色已删除');
+    }
+
+    // ========== 阅读模式临时高亮 ==========
+
+    /**
+     * 阅读模式：处理文字选择
+     */
+    _handleReadModeSelection() {
+        const selection = window.getSelection();
+        if (!selection || selection.rangeCount === 0) {
+            return;
+        }
+
+        const range = selection.getRangeAt(0);
+        const selectedText = range.toString().trim();
+
+        // 没有选中文字，隐藏触发图标
+        if (!selectedText || range.collapsed) {
+            this._hideHighlightTrigger();
+            this._hideHighlightPicker();
+            this._currentSelectionRange = null;
+            return;
+        }
+
+        // 确保选区在内容区域内
+        const contentArea = this.elements.content;
+        if (!contentArea || !contentArea.contains(range.commonAncestorContainer)) {
+            return;
+        }
+
+        // 保存当前选区（克隆以防被后续操作影响）
+        this._currentSelectionRange = range.cloneRange();
+
+        // 显示触发图标（不展开颜色选择器）
+        this._showHighlightTrigger(range);
+    }
+
+    /**
+     * 阅读模式：切换临时高亮（Ctrl+H 触发）
+     */
+    _toggleReadModeHighlight() {
+        const selection = window.getSelection();
+        if (!selection || selection.rangeCount === 0) return;
+
+        const range = selection.getRangeAt(0);
+
+        // 只处理有选中文本的情况
+        if (!range.collapsed && range.toString().trim()) {
+            this._applyReadModeHighlight(range);
+            this._showHighlightPickerForReadMode(range);
+        }
+    }
+
+    /**
+     * 阅读模式：应用临时高亮
+     */
+    _applyReadModeHighlight(range, color = this.currentHighlightColor) {
+        try {
+            // 检查 Range 是否有效
+            if (!range || range.collapsed) {
+                console.warn('无效的 Range 对象');
+                return;
+            }
+
+            // 确保选区在 content-area 内
+            const contentArea = this.elements.content;
+            if (!contentArea || !contentArea.contains(range.commonAncestorContainer)) {
+                console.warn('选区不在内容区域内');
+                return;
+            }
+
+            // 保存选区信息
+            const selectedText = range.toString();
+            if (!selectedText.trim()) {
+                console.warn('选区文本为空');
+                return;
+            }
+
+            // Bug 3 修复：检查选区是否在现有高亮内
+            const findParentMark = (node) => {
+                while (node && node !== contentArea) {
+                    if (node.nodeType === Node.ELEMENT_NODE &&
+                        node.tagName === 'MARK' &&
+                        node.classList.contains('temp-highlight')) {
+                        return node;
+                    }
+                    node = node.parentNode;
+                }
+                return null;
+            };
+
+            const startMark = findParentMark(range.startContainer);
+            const endMark = findParentMark(range.endContainer);
+
+            // 如果选区完全在同一个 mark 内，直接更新颜色
+            if (startMark && startMark === endMark) {
+                startMark.dataset.highlightColor = color;
+                this._applyHighlightColor(startMark, color);
+                window.getSelection()?.removeAllRanges();
+                // 保存最近修改的标记
+                this._lastCreatedMark = startMark;
+                // 标记高亮已修改
+                this._highlightsModified = true;
+                return;
+            }
+
+            // 修复：先展开选区涉及的所有现有高亮，避免嵌套
+            // 1. 找出所有与选区相交的 mark 元素
+            const marksToUnwrap = new Set();
+
+            // 检查 startContainer 和 endContainer 的父级 mark
+            if (startMark) marksToUnwrap.add(startMark);
+            if (endMark) marksToUnwrap.add(endMark);
+
+            // 检查选区内的所有 mark
+            const treeWalker = document.createTreeWalker(
+                range.commonAncestorContainer.nodeType === Node.ELEMENT_NODE
+                    ? range.commonAncestorContainer
+                    : range.commonAncestorContainer.parentNode,
+                NodeFilter.SHOW_ELEMENT,
+                {
+                    acceptNode: (node) => {
+                        if (node.tagName === 'MARK' && node.classList.contains('temp-highlight')) {
+                            return NodeFilter.FILTER_ACCEPT;
+                        }
+                        return NodeFilter.FILTER_SKIP;
+                    }
+                }
+            );
+
+            let currentNode;
+            while (currentNode = treeWalker.nextNode()) {
+                if (range.intersectsNode(currentNode)) {
+                    marksToUnwrap.add(currentNode);
+                }
+            }
+
+            // 2. 在展开 mark 之前，保存选区的完整信息
+            // 保存选区文本用于后续验证
+            const savedText = range.toString();
+
+            // 计算选区起点在父容器中的文本偏移量
+            const getTextOffset = (container, offset) => {
+                const parent = container.nodeType === Node.TEXT_NODE ? container.parentNode : container;
+                let textOffset = 0;
+
+                // 遍历父节点的所有子节点，累计到目标位置的文本长度
+                const walker = document.createTreeWalker(
+                    parent,
+                    NodeFilter.SHOW_TEXT,
+                    null
+                );
+
+                let node;
+                while (node = walker.nextNode()) {
+                    if (node === container) {
+                        textOffset += offset;
+                        break;
+                    } else if (container.nodeType === Node.ELEMENT_NODE && parent === container) {
+                        // 如果 container 是元素节点，计算到指定子节点的偏移
+                        const childNodes = Array.from(container.childNodes);
+                        let currentOffset = 0;
+                        for (let i = 0; i < offset && i < childNodes.length; i++) {
+                            const child = childNodes[i];
+                            if (child.nodeType === Node.TEXT_NODE) {
+                                currentOffset += child.textContent.length;
+                            } else {
+                                currentOffset += child.textContent.length;
+                            }
+                        }
+                        textOffset = currentOffset;
+                        break;
+                    } else {
+                        textOffset += node.textContent.length;
+                    }
+                }
+
+                return { parent, textOffset };
+            };
+
+            const startInfo = getTextOffset(range.startContainer, range.startOffset);
+            const endInfo = getTextOffset(range.endContainer, range.endOffset);
+
+            // 如果起点和终点在不同的父元素，使用共同祖先
+            let commonParent = range.commonAncestorContainer;
+            if (commonParent.nodeType === Node.TEXT_NODE) {
+                commonParent = commonParent.parentNode;
+            }
+
+            // 3. 展开所有相关的 mark
+            marksToUnwrap.forEach(mark => {
+                const parent = mark.parentNode;
+                if (!parent) return;
+
+                // 展开 mark
+                while (mark.firstChild) {
+                    parent.insertBefore(mark.firstChild, mark);
+                }
+                parent.removeChild(mark);
+            });
+
+            // 合并所有受影响的父节点中的文本节点
+            const parentsToNormalize = new Set();
+            parentsToNormalize.add(commonParent);
+            if (startInfo.parent !== commonParent) parentsToNormalize.add(startInfo.parent);
+            if (endInfo.parent !== commonParent) parentsToNormalize.add(endInfo.parent);
+            parentsToNormalize.forEach(p => p.normalize());
+
+            // 4. 基于保存的文本内容重新创建选区
+            // 在 commonParent 中查找匹配的文本
+            const findTextRange = (parent, targetText) => {
+                const fullText = parent.textContent;
+                const startIndex = fullText.indexOf(targetText);
+
+                if (startIndex === -1) {
+                    console.warn('无法找到选区文本:', targetText.substring(0, 20));
+                    return null;
+                }
+
+                const endIndex = startIndex + targetText.length;
+                const newRange = document.createRange();
+
+                // 遍历文本节点找到对应位置
+                const walker = document.createTreeWalker(
+                    parent,
+                    NodeFilter.SHOW_TEXT,
+                    null
+                );
+
+                let currentOffset = 0;
+                let startSet = false;
+                let node;
+
+                while (node = walker.nextNode()) {
+                    const nodeLength = node.textContent.length;
+                    const nodeEnd = currentOffset + nodeLength;
+
+                    // 设置起点
+                    if (!startSet && currentOffset <= startIndex && startIndex < nodeEnd) {
+                        newRange.setStart(node, startIndex - currentOffset);
+                        startSet = true;
+                    }
+
+                    // 设置终点
+                    if (startSet && currentOffset < endIndex && endIndex <= nodeEnd) {
+                        newRange.setEnd(node, endIndex - currentOffset);
+                        return newRange;
+                    }
+
+                    currentOffset = nodeEnd;
+                }
+
+                return null;
+            };
+
+            const newRange = findTextRange(commonParent, savedText);
+            if (!newRange) {
+                console.error('无法重新创建选区');
+                return;
+            }
+
+            // 5. 创建并应用新高亮
+            const mark = document.createElement('mark');
+            mark.className = 'temp-highlight';
+            mark.dataset.highlightColor = color;
+            this._applyHighlightColor(mark, color);
+
+            try {
+                newRange.surroundContents(mark);
+            } catch (e) {
+                // 跨元素选择时使用 extractContents
+                const fragment = newRange.extractContents();
+                mark.appendChild(fragment);
+                newRange.insertNode(mark);
+            }
+
+            // 清除选区
+            window.getSelection()?.removeAllRanges();
+
+            // 保存最近创建的标记（用于颜色更新）
+            this._lastCreatedMark = mark;
+
+            // 标记高亮已修改
+            this._highlightsModified = true;
+
+        } catch (error) {
+            console.error('应用阅读模式高亮失败:', error);
+        }
+    }
+
+    /**
+     * 阅读模式：移除临时高亮
+     */
+    _removeReadModeHighlight(markElement) {
+        if (!markElement || markElement.tagName !== 'MARK') return;
+
+        // 如果删除的是最近创建的标记，清除引用
+        if (this._lastCreatedMark === markElement) {
+            this._lastCreatedMark = null;
+        }
+
+        // 将 mark 的内容替换回父节点
+        const parent = markElement.parentNode;
+        if (!parent) return;
+
+        while (markElement.firstChild) {
+            parent.insertBefore(markElement.firstChild, markElement);
+        }
+        parent.removeChild(markElement);
+
+        // 合并相邻的文本节点
+        parent.normalize();
+
+        // 标记高亮已修改
+        this._highlightsModified = true;
+    }
+
+    /**
+     * 显示高亮触发图标
+     */
+    _showHighlightTrigger(range) {
+        const trigger = this.elements.highlightTrigger;
+        if (!trigger) return;
+
+        // 清除之前的定时器
+        if (this.highlightTriggerTimer) {
+            clearTimeout(this.highlightTriggerTimer);
+        }
+
+        // 获取选区位置
+        const rect = range.getBoundingClientRect();
+        if (!rect || rect.width === 0) return;
+
+        // 定位到选区右上角
+        trigger.style.display = 'flex';
+        trigger.classList.remove('fade-out');
+
+        const viewportWidth = window.innerWidth;
+
+        // 计算位置
+        let left = rect.right + 4;
+        let top = rect.top + window.scrollY - 12;
+
+        // 边界检查
+        if (left + 24 > viewportWidth - 10) {
+            left = rect.left - 28; // 放到左侧
+        }
+        if (top < 10) {
+            top = rect.bottom + window.scrollY + 4; // 放到下方
+        }
+
+        trigger.style.left = `${left}px`;
+        trigger.style.top = `${top}px`;
+
+        // 使用当前高亮颜色
+        const colorMap = {
+            'amber': 'rgba(251, 191, 36, 1)',
+            'emerald': 'rgba(52, 211, 153, 1)',
+            'sky': 'rgba(56, 189, 248, 1)',
+            'rose': 'rgba(251, 113, 133, 1)',
+            'violet': 'rgba(167, 139, 250, 1)',
+        };
+        const color = colorMap[this.currentHighlightColor] || this.highlightColors?.[this.currentHighlightColor] || colorMap['amber'];
+        trigger.style.color = color;
+
+        this.highlightTriggerVisible = true;
+    }
+
+    /**
+     * 隐藏高亮触发图标
+     */
+    _hideHighlightTrigger() {
+        const trigger = this.elements.highlightTrigger;
+        if (!trigger) return;
+
+        // 清理定时器
+        if (this.highlightTriggerTimer) {
+            clearTimeout(this.highlightTriggerTimer);
+            this.highlightTriggerTimer = null;
+        }
+
+        trigger.classList.add('fade-out');
+        setTimeout(() => {
+            trigger.style.display = 'none';
+            trigger.classList.remove('fade-out');
+        }, 150);
+
+        this.highlightTriggerVisible = false;
+    }
+
+    /**
+     * 阅读模式：显示颜色选择器
+     * 关键：第一个颜色点要对齐小圆点位置，这样双击不用挪鼠标
+     */
+    _showHighlightPickerForReadMode(range) {
+        const picker = this.elements.highlightPicker;
+        const trigger = this.elements.highlightTrigger;
+        if (!picker) return;
+
+        // 确保 picker 事件已绑定（与 edit mode 共用）
+        this._ensurePickerEventsBound(picker);
+
+        // 获取小圆点的中心位置（展开后第一个颜色要对齐这里）
+        const triggerRect = trigger?.getBoundingClientRect();
+        const triggerCenterX = triggerRect ? triggerRect.left + triggerRect.width / 2 : null;
+        const triggerCenterY = triggerRect ? triggerRect.top + triggerRect.height / 2 : null;
+
+        // 隐藏触发图标
+        this._hideHighlightTrigger();
+
+        // 清除之前的定时器
+        if (this.highlightPickerTimer) {
+            clearTimeout(this.highlightPickerTimer);
+        }
+
+        // 定位到选区上方
+        picker.style.display = 'flex';
+        picker.classList.remove('fade-out');
+
+        const pickerRect = picker.getBoundingClientRect();
+        const viewportWidth = window.innerWidth;
+
+        // 第一个颜色点中心相对于 picker 左边缘的偏移: padding(12) + 半径(8) = 20px
+        const firstDotOffset = 20;
+
+        let left, top;
+
+        if (triggerCenterX !== null && triggerCenterY !== null) {
+            // 让第一个颜色点对齐小圆点原位置
+            left = triggerCenterX - firstDotOffset;
+            top = triggerCenterY - pickerRect.height / 2 + window.scrollY;
+        } else {
+            // fallback: 基于选区定位
+            const rect = range.getBoundingClientRect();
+            left = rect.left + rect.width / 2 - pickerRect.width / 2;
+            top = rect.top + window.scrollY - 40;
+        }
+
+        // 边界检查
+        if (left < 10) left = 10;
+        if (left + pickerRect.width > viewportWidth - 10) {
+            left = viewportWidth - pickerRect.width - 10;
+        }
+        if (top < 10) top = 10;
+
+        picker.style.left = `${left}px`;
+        picker.style.top = `${top}px`;
+
+        // 标记当前颜色
+        picker.querySelectorAll('.highlight-dot').forEach(dot => {
+            dot.classList.toggle('active', dot.dataset.color === this.currentHighlightColor);
+        });
+
+        this.highlightPickerVisible = true;
+
+        // 2秒后自动隐藏
+        this.highlightPickerTimer = setTimeout(() => {
+            this._hideHighlightPicker();
+        }, 2000);
+
+        // 保存当前高亮范围（用于后续颜色更新）
+        this._lastHighlightRange = range;
+    }
+
+    /**
+     * 更新最近添加的高亮颜色
+     */
+    _updateLastReadModeHighlight(color) {
+        // 使用最近创建或修改的标记
+        if (this._lastCreatedMark && this._lastCreatedMark.parentNode) {
+            this._lastCreatedMark.dataset.highlightColor = color;
+            this._applyHighlightColor(this._lastCreatedMark, color);
+            // 标记高亮已修改
+            this._highlightsModified = true;
+        } else {
+            // 降级方案：查找最近添加的高亮（DOM 顺序的最后一个）
+            const allMarks = this.elements.content?.querySelectorAll('mark.temp-highlight');
+            if (allMarks && allMarks.length > 0) {
+                const lastMark = allMarks[allMarks.length - 1];
+                lastMark.dataset.highlightColor = color;
+                this._applyHighlightColor(lastMark, color);
+                this._lastCreatedMark = lastMark;
+                // 标记高亮已修改
+                this._highlightsModified = true;
+            }
+        }
+    }
+
+    /**
+     * 应用高亮颜色样式（Bug 4 修复：暗色模式优化）
+     */
+    _applyHighlightColor(element, colorName) {
+        // Bug 4 修复：提高颜色不透明度，暗色模式下更明显
+        const colorMap = {
+            'amber': 'rgba(251, 191, 36, 0.5)',
+            'emerald': 'rgba(52, 211, 153, 0.5)',
+            'sky': 'rgba(56, 189, 248, 0.45)',
+            'rose': 'rgba(251, 113, 133, 0.45)',
+            'violet': 'rgba(167, 139, 250, 0.5)',
+        };
+
+        // 修复：优先使用新的 colorMap，然后是自定义颜色，最后是默认 amber
+        const color = colorMap[colorName] || this.highlightColors?.[colorName] || colorMap['amber'];
+        element.style.background = color;
+    }
+
+    /**
+     * 清除所有阅读模式临时高亮
+     */
+    _clearAllReadModeHighlights() {
+        const allMarks = this.elements.content?.querySelectorAll('mark.temp-highlight');
+        if (allMarks) {
+            allMarks.forEach(mark => {
+                this._removeReadModeHighlight(mark);
+            });
+        }
+        // 清除最近创建的标记引用
+        this._lastCreatedMark = null;
+    }
+
+    /**
+     * 保存当前的高亮信息（切换到编辑模式前）
+     */
+    _saveHighlights() {
+        this._savedHighlights = [];
+        const contentArea = this.elements.content;
+        if (!contentArea) return;
+
+        const allMarks = contentArea.querySelectorAll('mark.temp-highlight');
+        if (!allMarks || allMarks.length === 0) return;
+
+        // 获取所有文本节点的文本内容，用于计算偏移量
+        const getTextContent = (node) => {
+            let text = '';
+            const walker = document.createTreeWalker(
+                node,
+                NodeFilter.SHOW_TEXT,
+                null,
+                false
+            );
+            let textNode;
+            while (textNode = walker.nextNode()) {
+                text += textNode.textContent;
+            }
+            return text;
+        };
+
+        // 计算节点在文档中的文本偏移量
+        const getTextOffset = (targetNode) => {
+            let offset = 0;
+            const walker = document.createTreeWalker(
+                contentArea,
+                NodeFilter.SHOW_TEXT,
+                null,
+                false
+            );
+
+            let currentNode;
+            while (currentNode = walker.nextNode()) {
+                if (currentNode === targetNode) {
+                    break;
+                }
+                offset += currentNode.textContent.length;
+            }
+            return offset;
+        };
+
+        // 遍历所有高亮标记
+        allMarks.forEach(mark => {
+            try {
+                const text = mark.textContent;
+                const color = mark.dataset.highlightColor || 'amber';
+
+                // 获取高亮开始位置的文本偏移量
+                const firstTextNode = document.createTreeWalker(
+                    mark,
+                    NodeFilter.SHOW_TEXT,
+                    null,
+                    false
+                ).nextNode();
+
+                if (firstTextNode) {
+                    const offset = getTextOffset(firstTextNode);
+
+                    this._savedHighlights.push({
+                        text: text,
+                        color: color,
+                        offset: offset,
+                        length: text.length
+                    });
+                }
+            } catch (error) {
+                console.error('保存高亮失败:', error);
+            }
+        });
+    }
+
+    /**
+     * 恢复之前保存的高亮（切换回阅读模式后）
+     */
+    _restoreHighlights() {
+        if (!this._savedHighlights || this._savedHighlights.length === 0) {
+            return;
+        }
+
+        const contentArea = this.elements.content;
+        if (!contentArea) return;
+
+        // 创建文本节点 walker
+        const walker = document.createTreeWalker(
+            contentArea,
+            NodeFilter.SHOW_TEXT,
+            null,
+            false
+        );
+
+        // 构建文本节点数组和偏移量映射
+        const textNodes = [];
+        const nodeOffsets = [];
+        let currentOffset = 0;
+
+        let textNode;
+        while (textNode = walker.nextNode()) {
+            textNodes.push(textNode);
+            nodeOffsets.push(currentOffset);
+            currentOffset += textNode.textContent.length;
+        }
+
+        // 恢复每个高亮
+        this._savedHighlights.forEach(highlight => {
+            try {
+                const { text, color, offset, length } = highlight;
+
+                // 查找包含起始偏移的文本节点
+                let startNodeIndex = -1;
+                let startNodeOffset = 0;
+
+                for (let i = 0; i < nodeOffsets.length; i++) {
+                    if (offset >= nodeOffsets[i]) {
+                        const nodeEnd = nodeOffsets[i] + textNodes[i].textContent.length;
+                        if (offset < nodeEnd) {
+                            startNodeIndex = i;
+                            startNodeOffset = offset - nodeOffsets[i];
+                            break;
+                        }
+                    }
+                }
+
+                if (startNodeIndex === -1) {
+                    console.warn('未找到起始节点，偏移:', offset);
+                    return;
+                }
+
+                // 创建 Range
+                const range = document.createRange();
+                const startNode = textNodes[startNodeIndex];
+                range.setStart(startNode, startNodeOffset);
+
+                // 查找结束位置
+                let remainingLength = length;
+                let currentNodeIndex = startNodeIndex;
+                let endNodeOffset = startNodeOffset;
+
+                while (remainingLength > 0 && currentNodeIndex < textNodes.length) {
+                    const currentNode = textNodes[currentNodeIndex];
+                    const availableLength = currentNode.textContent.length - endNodeOffset;
+
+                    if (remainingLength <= availableLength) {
+                        endNodeOffset += remainingLength;
+                        remainingLength = 0;
+                    } else {
+                        remainingLength -= availableLength;
+                        currentNodeIndex++;
+                        endNodeOffset = 0;
+                    }
+                }
+
+                if (remainingLength > 0) {
+                    console.warn('文本长度不足，可能内容已改变');
+                    return;
+                }
+
+                range.setEnd(textNodes[currentNodeIndex], endNodeOffset);
+
+                // 验证文本是否匹配
+                const rangeText = range.toString();
+                if (rangeText !== text) {
+                    console.warn('文本不匹配，尝试模糊匹配:', {
+                        expected: text.substring(0, 30),
+                        actual: rangeText.substring(0, 30)
+                    });
+
+                    // 如果文本不完全匹配，尝试在附近查找
+                    if (!this._findAndHighlightText(text, color, offset)) {
+                        console.warn('无法恢复高亮:', text.substring(0, 30));
+                        return;
+                    }
+                } else {
+                    // 文本匹配，应用高亮
+                    this._applyReadModeHighlight(range, color);
+                }
+
+            } catch (error) {
+                console.error('恢复高亮失败:', error);
+            }
+        });
+
+        // 清空保存的高亮
+        this._savedHighlights = [];
+    }
+
+    /**
+     * 在内容区域中查找文本并应用高亮（用于模糊匹配）
+     */
+    _findAndHighlightText(text, color, preferredOffset) {
+        const contentArea = this.elements.content;
+        if (!contentArea) return false;
+
+        const contentText = contentArea.textContent;
+
+        // 首先尝试在期望位置附近查找
+        const searchStart = Math.max(0, preferredOffset - 100);
+        const searchEnd = Math.min(contentText.length, preferredOffset + text.length + 100);
+        const searchText = contentText.substring(searchStart, searchEnd);
+
+        let index = searchText.indexOf(text);
+        if (index === -1) {
+            // 在附近没找到，尝试全文搜索
+            index = contentText.indexOf(text);
+            if (index === -1) {
+                return false;
+            }
+        } else {
+            index += searchStart;
+        }
+
+        // 找到了文本，创建 Range
+        try {
+            const walker = document.createTreeWalker(
+                contentArea,
+                NodeFilter.SHOW_TEXT,
+                null,
+                false
+            );
+
+            let currentOffset = 0;
+            let textNode;
+
+            while (textNode = walker.nextNode()) {
+                const nodeLength = textNode.textContent.length;
+                const nodeEnd = currentOffset + nodeLength;
+
+                if (index >= currentOffset && index < nodeEnd) {
+                    // 找到起始节点
+                    const range = document.createRange();
+                    const startOffset = index - currentOffset;
+                    range.setStart(textNode, startOffset);
+
+                    // 设置结束位置
+                    let remainingLength = text.length - (nodeLength - startOffset);
+                    if (remainingLength <= 0) {
+                        // 在同一节点内
+                        range.setEnd(textNode, startOffset + text.length);
+                    } else {
+                        // 跨越多个节点
+                        range.setEnd(textNode, nodeLength);
+                        let nextNode;
+                        while ((nextNode = walker.nextNode()) && remainingLength > 0) {
+                            const nextLength = nextNode.textContent.length;
+                            if (remainingLength <= nextLength) {
+                                range.setEnd(nextNode, remainingLength);
+                                remainingLength = 0;
+                            } else {
+                                remainingLength -= nextLength;
+                            }
+                        }
+                    }
+
+                    this._applyReadModeHighlight(range, color);
+                    return true;
+                }
+
+                currentOffset = nodeEnd;
+            }
+        } catch (error) {
+            console.error('模糊匹配失败:', error);
+        }
+
+        return false;
+    }
+
+    // ========== 高亮持久化 ==========
+
+    /**
+     * 生成文件路径的哈希值
+     */
+    _hashFilePath(filePath) {
+        if (!filePath) return 'default';
+        let hash = 0;
+        for (let i = 0; i < filePath.length; i++) {
+            const char = filePath.charCodeAt(i);
+            hash = ((hash << 5) - hash) + char;
+            hash = hash & hash; // Convert to 32bit integer
+        }
+        return Math.abs(hash).toString(36);
+    }
+
+    /**
+     * 保存高亮到 localStorage（持久化）
+     */
+    _saveHighlightsToPersistence() {
+        if (!this.currentFilePath) {
+            return;
+        }
+
+        const highlights = [];
+        const contentArea = this.elements.content;
+        if (!contentArea) return;
+
+        const allMarks = contentArea.querySelectorAll('mark.temp-highlight');
+        if (!allMarks || allMarks.length === 0) {
+            // 清空该文件的高亮数据
+            const key = 'mditor-highlights-' + this._hashFilePath(this.currentFilePath);
+            localStorage.removeItem(key);
+            return;
+        }
+
+        // 计算节点在文档中的文本偏移量
+        const getTextOffset = (targetNode) => {
+            let offset = 0;
+            const walker = document.createTreeWalker(
+                contentArea,
+                NodeFilter.SHOW_TEXT,
+                null,
+                false
+            );
+
+            let currentNode;
+            while (currentNode = walker.nextNode()) {
+                if (currentNode === targetNode) {
+                    break;
+                }
+                offset += currentNode.textContent.length;
+            }
+            return offset;
+        };
+
+        // 遍历所有高亮标记
+        allMarks.forEach(mark => {
+            try {
+                const text = mark.textContent;
+                const color = mark.dataset.highlightColor || 'amber';
+
+                // 获取高亮开始位置的文本偏移量
+                const firstTextNode = document.createTreeWalker(
+                    mark,
+                    NodeFilter.SHOW_TEXT,
+                    null,
+                    false
+                ).nextNode();
+
+                if (firstTextNode) {
+                    const offset = getTextOffset(firstTextNode);
+                    highlights.push({
+                        text: text,
+                        color: color,
+                        offset: offset,
+                        length: text.length
+                    });
+                }
+            } catch (error) {
+                console.error('保存高亮失败:', error);
+            }
+        });
+
+        const key = 'mditor-highlights-' + this._hashFilePath(this.currentFilePath);
+        const data = {
+            filePath: this.currentFilePath,
+            highlights: highlights,
+            timestamp: Date.now()
+        };
+
+        localStorage.setItem(key, JSON.stringify(data));
+
+        // 保存后标记为未修改
+        this._highlightsModified = false;
+    }
+
+    /**
+     * 从 localStorage 加载高亮（持久化）
+     */
+    _loadHighlightsFromPersistence() {
+        if (!this.currentFilePath) {
+            return;
+        }
+
+        const key = 'mditor-highlights-' + this._hashFilePath(this.currentFilePath);
+        const dataStr = localStorage.getItem(key);
+
+        if (!dataStr) {
+            return;
+        }
+
+        try {
+            const data = JSON.parse(dataStr);
+            const highlights = data.highlights;
+
+            if (!highlights || highlights.length === 0) {
+                return;
+            }
+
+            const contentArea = this.elements.content;
+            if (!contentArea) return;
+
+            // 创建文本节点 walker
+            const walker = document.createTreeWalker(
+                contentArea,
+                NodeFilter.SHOW_TEXT,
+                null,
+                false
+            );
+
+            // 构建文本节点数组和偏移量映射
+            const textNodes = [];
+            const nodeOffsets = [];
+            let currentOffset = 0;
+
+            let textNode;
+            while (textNode = walker.nextNode()) {
+                textNodes.push(textNode);
+                nodeOffsets.push(currentOffset);
+                currentOffset += textNode.textContent.length;
+            }
+
+            // 恢复每个高亮
+            highlights.forEach(highlight => {
+                try {
+                    const { text, color, offset, length } = highlight;
+
+                    // 查找包含起始偏移的文本节点
+                    let startNodeIndex = -1;
+                    let startNodeOffset = 0;
+
+                    for (let i = 0; i < nodeOffsets.length; i++) {
+                        if (offset >= nodeOffsets[i]) {
+                            const nodeEnd = nodeOffsets[i] + textNodes[i].textContent.length;
+                            if (offset < nodeEnd) {
+                                startNodeIndex = i;
+                                startNodeOffset = offset - nodeOffsets[i];
+                                break;
+                            }
+                        }
+                    }
+
+                    if (startNodeIndex === -1) {
+                        console.warn('未找到起始节点，偏移:', offset);
+                        return;
+                    }
+
+                    // 创建 Range
+                    const range = document.createRange();
+                    const startNode = textNodes[startNodeIndex];
+                    range.setStart(startNode, startNodeOffset);
+
+                    // 查找结束位置
+                    let remainingLength = length;
+                    let currentNodeIndex = startNodeIndex;
+                    let endNodeOffset = startNodeOffset;
+
+                    while (remainingLength > 0 && currentNodeIndex < textNodes.length) {
+                        const currentNode = textNodes[currentNodeIndex];
+                        const availableLength = currentNode.textContent.length - endNodeOffset;
+
+                        if (remainingLength <= availableLength) {
+                            endNodeOffset += remainingLength;
+                            remainingLength = 0;
+                        } else {
+                            remainingLength -= availableLength;
+                            currentNodeIndex++;
+                            endNodeOffset = 0;
+                        }
+                    }
+
+                    if (remainingLength > 0) {
+                        console.warn('文本长度不足，可能内容已改变');
+                        return;
+                    }
+
+                    range.setEnd(textNodes[currentNodeIndex], endNodeOffset);
+
+                    // 验证文本是否匹配
+                    const rangeText = range.toString();
+                    if (rangeText === text) {
+                        // 文本匹配，应用高亮
+                        this._applyReadModeHighlight(range, color);
+                    } else {
+                        console.warn('文本不匹配，跳过:', text.substring(0, 30));
+                    }
+
+                } catch (error) {
+                    console.error('加载高亮失败:', error);
+                }
+            });
+
+            // 加载后标记为未修改
+            this._highlightsModified = false;
+            // 清除最近创建的标记引用（因为这些是从持久化加载的，不是新创建的）
+            this._lastCreatedMark = null;
+
+        } catch (error) {
+            console.error('解析高亮数据失败:', error);
+        }
+    }
+
+    /**
+     * 检查是否有未保存的高亮
+     */
+    _hasUnsavedHighlights() {
+        // 如果没有修改标记，返回 false
+        if (!this._highlightsModified) {
+            return false;
+        }
+
+        // 检查是否有高亮存在
+        const contentArea = this.elements.content;
+        if (!contentArea) return false;
+
+        const allMarks = contentArea.querySelectorAll('mark.temp-highlight');
+        return allMarks && allMarks.length > 0;
+    }
+
+    /**
+     * 显示保存确认对话框
+     */
+    _showSaveHighlightsDialog() {
+        return new Promise((resolve) => {
+            const dialog = document.getElementById('save-highlights-dialog');
+            if (!dialog) {
+                resolve('cancel');
+                return;
+            }
+
+            dialog.style.display = 'flex';
+
+            // 处理按钮点击
+            const handleClick = (action) => {
+                dialog.style.display = 'none';
+                dialog.removeEventListener('click', clickHandler);
+                resolve(action);
+            };
+
+            const clickHandler = (e) => {
+                const btn = e.target.closest('[data-action]');
+                if (btn) {
+                    const action = btn.dataset.action;
+                    handleClick(action);
+                }
+            };
+
+            dialog.addEventListener('click', clickHandler);
+        });
     }
 
     // ========== 斜杠命令 ==========
@@ -1692,6 +3589,32 @@ class App {
             setTimeout(() => {
                 btn.textContent = '检查更新';
             }, 2000);
+        }
+    }
+
+    /**
+     * 处理窗口关闭事件（由 main.js 调用）
+     * 返回 true 表示可以关闭，false 表示取消关闭
+     */
+    async _handleWindowClose() {
+        // 检查是否有未保存的高亮
+        if (!this._hasUnsavedHighlights()) {
+            return true;  // 没有未保存的高亮，允许关闭
+        }
+
+        // 显示保存确认对话框
+        const action = await this._showSaveHighlightsDialog();
+
+        if (action === 'save') {
+            // 保存高亮
+            this._saveHighlightsToPersistence();
+            return true;  // 保存后关闭
+        } else if (action === 'discard') {
+            // 不保存，直接关闭
+            return true;
+        } else {
+            // 取消关闭
+            return false;
         }
     }
 }

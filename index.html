@@ -223,6 +223,50 @@
       </div>
     </div>
 
+    <!-- 高亮触发图标 -->
+    <div id="highlight-trigger" class="highlight-trigger" style="display: none;">
+      <svg viewBox="0 0 24 24" fill="currentColor">
+        <circle cx="12" cy="12" r="6"/>
+      </svg>
+    </div>
+
+    <!-- 高亮颜色选择器 -->
+    <div id="highlight-picker" class="highlight-picker" style="display: none;">
+      <!-- 颜色定义与 app.js (line 101-107) 保持一致 -->
+      <div class="highlight-dot" data-color="amber" style="background: rgba(251, 191, 36, 0.35);" title="琥珀"></div>
+      <div class="highlight-dot" data-color="emerald" style="background: rgba(52, 211, 153, 0.30);" title="翡翠"></div>
+      <div class="highlight-dot" data-color="sky" style="background: rgba(56, 189, 248, 0.30);" title="天蓝"></div>
+      <div class="highlight-dot" data-color="rose" style="background: rgba(251, 113, 133, 0.30);" title="玫瑰"></div>
+      <div class="highlight-dot" data-color="violet" style="background: rgba(167, 139, 250, 0.35);" title="紫罗兰"></div>
+      <div class="highlight-dot highlight-add" data-action="add" title="添加颜色">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 5v14M5 12h14"/>
+        </svg>
+      </div>
+    </div>
+
+    <!-- 添加颜色弹窗 -->
+    <div id="color-add-popup" class="color-add-popup" style="display: none;">
+      <div class="color-add-hint">
+        从 <a href="https://tailwindcss.com/docs/colors" target="_blank">Tailwind</a> 或
+        <a href="https://coolors.co" target="_blank">Coolors</a> 获取颜色
+      </div>
+      <div class="color-add-input-wrap">
+        <div id="color-preview" class="color-preview"></div>
+        <input type="text" id="color-input" class="color-input" placeholder="粘贴 rgba 或 hex...">
+      </div>
+    </div>
+
+    <!-- 删除区域 -->
+    <div id="delete-zone" class="delete-zone">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polyline points="3 6 5 6 21 6"></polyline>
+        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+        <line x1="10" y1="11" x2="10" y2="17"></line>
+        <line x1="14" y1="11" x2="14" y2="17"></line>
+      </svg>
+    </div>
+
     <!-- 状态栏 -->
     <footer id="statusbar" class="statusbar">
       <div class="statusbar-left">
@@ -269,6 +313,20 @@
             </div>
             <button id="check-update-btn" class="settings-btn">检查更新</button>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 保存高亮确认对话框 -->
+    <div id="save-highlights-dialog" class="save-highlights-dialog" style="display: none;">
+      <div class="dialog-overlay"></div>
+      <div class="dialog-content">
+        <h3 class="dialog-title">是否保存高亮标注？</h3>
+        <p class="dialog-message">您对此文档添加了高亮标注，是否保存？</p>
+        <div class="dialog-actions">
+          <button class="dialog-btn" data-action="discard">不保存</button>
+          <button class="dialog-btn" data-action="cancel">取消</button>
+          <button class="dialog-btn primary" data-action="save">保存</button>
         </div>
       </div>
     </div>

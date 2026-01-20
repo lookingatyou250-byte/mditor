@@ -82,6 +82,28 @@ class MarkdownParser {
         };
 
         marked.use({ renderer });
+
+        // 高亮扩展 (==text==)
+        marked.use({
+            extensions: [{
+                name: 'highlight',
+                level: 'inline',
+                start(src) { return src.indexOf('=='); },
+                tokenizer(src) {
+                    const match = src.match(/^==([^=]+)==/);
+                    if (match) {
+                        return {
+                            type: 'highlight',
+                            raw: match[0],
+                            text: match[1]
+                        };
+                    }
+                },
+                renderer(token) {
+                    return `<mark>${token.text}</mark>`;
+                }
+            }]
+        });
     }
 
     /**
@@ -127,7 +149,7 @@ class MarkdownParser {
         }
 
         return DOMPurify.sanitize(html, {
-            ALLOWED_TAGS: ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'span', 'div', 'ul', 'ol', 'li', 'blockquote', 'pre', 'code', 'a', 'img', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'strong', 'em', 'del', 'br', 'hr', 'input', 'figure', 'figcaption'],
+            ALLOWED_TAGS: ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'span', 'div', 'ul', 'ol', 'li', 'blockquote', 'pre', 'code', 'a', 'img', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'strong', 'em', 'del', 'br', 'hr', 'input', 'figure', 'figcaption', 'mark'],
             ALLOWED_ATTR: ['href', 'title', 'class', 'id', 'src', 'alt', 'loading', 'type', 'checked', 'disabled', 'target', 'rel', 'style', 'data-lang', 'start'],
             FORBID_TAGS: ['script', 'style', 'iframe', 'form', 'object', 'embed'],
             FORBID_ATTR: ['onerror', 'onclick', 'onload', 'onmouseover', 'onfocus', 'onblur'],
