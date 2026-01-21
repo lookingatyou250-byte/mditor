@@ -48,7 +48,7 @@ class StateManager {
     }
 
     /**
-     * 从 localStorage 加载主题
+     * 从 localStorage 加载主题（用于快速初始化，避免闪烁）
      */
     _loadTheme() {
         const saved = localStorage.getItem('md-reader-theme');
@@ -148,7 +148,13 @@ class StateManager {
      * 持久化主题设置
      */
     persistTheme() {
-        localStorage.setItem('md-reader-theme', this.state.ui.theme);
+        const theme = this.state.ui.theme;
+        // 保存到 localStorage（用于快速初始化）
+        localStorage.setItem('md-reader-theme', theme);
+        // 通知 main 进程（用于跨窗口同步和持久化）
+        if (window.electronAPI?.setTheme) {
+            window.electronAPI.setTheme(theme);
+        }
     }
 
     /**

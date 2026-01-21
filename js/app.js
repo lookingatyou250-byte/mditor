@@ -128,6 +128,7 @@ class App {
         this._initModules();
         this._bindEvents();
         this._applyTheme();
+        this._syncThemeFromMain();  // 从 main 进程同步主题
         this._applySidebarMode();  // 应用默认侧边栏状态（隐藏）
         this._initScrollbar();     // 初始化自定义滚动条
         this._initSettings();      // 初始化设置
@@ -257,19 +258,6 @@ class App {
         this._bindWindowControls();
         this._bindSidebarTabs();
 
-        // 跨窗口主题同步：监听其他窗口的 localStorage 变化
-        window.addEventListener('storage', (e) => {
-            if (e.key === 'md-reader-theme' && e.newValue) {
-                const newTheme = e.newValue;
-                if (newTheme !== this.state.get('ui.theme')) {
-                    this.state.set('ui.theme', newTheme);
-                    this._applyTheme();
-                    if (this.editor) {
-                        this.editor.setDarkMode(newTheme === 'dark');
-                    }
-                }
-            }
-        });
     }
 
     /**
@@ -677,7 +665,8 @@ class App {
         if (window.electronAPI?.getInitialFile) {
             try {
                 const data = await window.electronAPI.getInitialFile();
-                if (data && data.content) {
+                // 检查是否有文件数据（content 可能是空字符串，所以用 !== undefined）
+                if (data && data.content !== undefined) {
                     this.currentFilePath = data.filePath;
                     this._onFileLoaded(data.content, data.fileName);
                     this._loadFileTree();
@@ -732,6 +721,12 @@ class App {
         }
 
         this._showToast(`已加载: ${fileName}`, 'success');
+
+        // 空白文件自动进入编辑模式
+        if (!content || !content.trim()) {
+            this._setMode('edit');
+            return;
+        }
 
         // 在阅读模式下，延迟加载持久化的高亮
         if (!this.isEditMode) {
@@ -1103,7 +1098,11 @@ class App {
                 this.currentContent = this.editor.getValue();
             }
 
-            const html = this.parser.parse(this.currentContent);
+            // 如果有文件打开但内容为空，显示空白而不是欢迎提示
+            const hasContent = this.currentContent && this.currentContent.trim();
+            const html = hasContent
+                ? this.parser.parse(this.currentContent)
+                : (this.currentFilePath ? ' ' : '');  // 有文件但空内容，传递空格避免显示欢迎提示
             const outline = this.parser.extractOutline(this.currentContent);
             this.eventBus.emit(Events.CONTENT_PARSED, { html, outline });
             this.eventBus.emit(Events.OUTLINE_UPDATED, outline);
@@ -1250,6 +1249,38 @@ class App {
             hljsTheme.href = theme === 'dark'
                 ? 'https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css'
                 : 'https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css';
+        }
+    }
+
+    /**
+     * 从 main 进程同步主题（启动时和跨窗口同步）
+     */
+    async _syncThemeFromMain() {
+        // 立即注册监听器（不要放在 await 之后，以免错过消息）
+        if (window.electronAPI?.onThemeChanged) {
+            window.electronAPI.onThemeChanged((theme) => {
+                if (theme !== this.state.get('ui.theme')) {
+                    this.state.set('ui.theme', theme);
+                    localStorage.setItem('md-reader-theme', theme);
+                    this._applyTheme();
+                    if (this.editor) {
+                        this.editor.setDarkMode(theme === 'dark');
+                    }
+                }
+            });
+        }
+
+        // 从 main 进程获取全局主题设置
+        if (window.electronAPI?.getTheme) {
+            const theme = await window.electronAPI.getTheme();
+            if (theme && theme !== this.state.get('ui.theme')) {
+                this.state.set('ui.theme', theme);
+                localStorage.setItem('md-reader-theme', theme);
+                this._applyTheme();
+                if (this.editor) {
+                    this.editor.setDarkMode(theme === 'dark');
+                }
+            }
         }
     }
 

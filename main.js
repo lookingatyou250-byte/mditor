@@ -2,27 +2,85 @@ const { app, BrowserWindow, Menu, dialog, ipcMain, shell } = require('electron')
 const path = require('path');
 const fs = require('fs');
 
+// ========== 单实例模式 ==========
+const gotTheLock = app.requestSingleInstanceLock();
+
+if (!gotTheLock) {
+    // 已经有一个实例在运行，立即退出
+    app.exit(0);
+}
+
+// 监听第二个实例的启动（只有获得锁的实例会到达这里）
+app.on('second-instance', (event, commandLine, workingDirectory) => {
+    // 从命令行参数中提取文件路径
+    const args = commandLine.slice(1);
+    let filePath = null;
+    for (const arg of args) {
+        const cleaned = arg.replace(/^"|"$/g, '').trim();
+        if (!cleaned || cleaned.startsWith('--') || cleaned.startsWith('-')) continue;
+        try {
+            const normalizedPath = path.normalize(cleaned);
+            const stat = fs.statSync(normalizedPath);
+            if (stat.isFile()) {
+                filePath = normalizedPath;
+                break;
+            }
+        } catch {
+            continue;
+        }
+    }
+    // 创建新窗口
+    createWindow(filePath);
+});
+
 // ========== 多窗口状态管理 ==========
 // 每个窗口维护自己的状态（通过 webContents.id 关联）
 const windowStates = new Map();
+
+// ========== 全局主题状态 ==========
+const settingsPath = path.join(app.getPath('userData'), 'settings.json');
+
+function loadSettings() {
+    try {
+        if (fs.existsSync(settingsPath)) {
+            return JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
+        }
+    } catch (e) {
+        console.error('Failed to load settings:', e);
+    }
+    return { theme: 'light' };
+}
+
+function saveSettings(settings) {
+    try {
+        fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
+    } catch (e) {
+        console.error('Failed to save settings:', e);
+    }
+}
+
+let globalSettings = loadSettings();
 
 // ========== 捕获启动参数 ==========
 let launchFilePath = null;
 if (process.platform !== 'darwin') {
     const args = process.argv.slice(1);
-    launchFilePath = args.find(arg => {
+    for (const arg of args) {
         const cleaned = arg.replace(/^"|"$/g, '').trim();
-        // 检查是否存在且是文件（不是目录）
-        if (!cleaned || cleaned.startsWith('--') || cleaned.startsWith('-')) return false;
+        // 跳过空参数或命令行选项
+        if (!cleaned || cleaned.startsWith('--') || cleaned.startsWith('-')) continue;
         try {
-            const stat = fs.statSync(cleaned);
-            return stat.isFile();
+            // 规范化路径
+            const normalizedPath = path.normalize(cleaned);
+            const stat = fs.statSync(normalizedPath);
+            if (stat.isFile()) {
+                launchFilePath = normalizedPath;
+                break;
+            }
         } catch {
-            return false;
+            // 文件不存在或无法访问，继续检查下一个参数
+            continue;
         }
-    });
-    if (launchFilePath) {
-        launchFilePath = launchFilePath.replace(/^"|"$/g, '').trim();
     }
 }
 
@@ -325,6 +383,27 @@ ipcMain.handle('is-maximized', (event) => {
     return win?.isMaximized() || false;
 });
 
+// 获取主题
+ipcMain.handle('get-theme', () => {
+    return globalSettings.theme;
+});
+
+// 设置主题（并广播给所有窗口）
+ipcMain.handle('set-theme', (event, theme) => {
+    globalSettings.theme = theme;
+    saveSettings(globalSettings);
+
+    // 广播给所有窗口
+    BrowserWindow.getAllWindows().forEach(win => {
+        if (win.isDestroyed()) return;
+        if (win.webContents.id !== event.sender.id) {
+            win.webContents.send('theme-changed', theme);
+        }
+    });
+
+    return true;
+});
+
 // 检查更新
 ipcMain.handle('check-for-updates', async () => {
     try {
@@ -365,6 +444,7 @@ ipcMain.handle('check-for-updates', async () => {
 });
 
 // ========== 应用生命周期 ==========
+// 注意：这些只有在获取到单实例锁时才执行（由于前面的 if (!gotTheLock) 会 quit）
 app.whenReady().then(() => {
     // 隐藏默认菜单（但保留快捷键功能）
     Menu.setApplicationMenu(null);

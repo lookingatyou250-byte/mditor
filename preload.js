@@ -64,5 +64,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
     openExternal: (url) => ipcRenderer.invoke('open-external', url),
 
     // 检查更新
-    checkForUpdates: () => ipcRenderer.invoke('check-for-updates')
+    checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
+
+    // 主题管理
+    getTheme: () => ipcRenderer.invoke('get-theme'),
+    setTheme: (theme) => ipcRenderer.invoke('set-theme', theme),
+    onThemeChanged: (callback) => {
+        ipcRenderer.on('theme-changed', (event, theme) => {
+            callback(theme);
+        });
+    }
 });
