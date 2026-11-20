@@ -9,7 +9,7 @@ import { markdown } from '@codemirror/lang-markdown';
 import { syntaxHighlighting, defaultHighlightStyle, bracketMatching } from '@codemirror/language';
 import { oneDark } from '@codemirror/theme-one-dark';
 
-// 自定义主题配�?- 匹配 mditor 的阅读模式风�?
+// 自定义主题配置 - 匹配 mditor 的阅读模式风格
 const mditorTheme = EditorView.theme({
     '&': {
         fontSize: 'var(--editor-font-size, 16px)',
@@ -82,6 +82,7 @@ class MditorEditor {
         this.view = null;
         this.container = null;
         this.onChange = null;
+        this.onScroll = null;
         this.isDark = false;
     }
 
@@ -94,6 +95,7 @@ class MditorEditor {
     init(container, initialContent = '', options = {}) {
         this.container = container;
         this.onChange = options.onChange || (() => { });
+        this.onScroll = options.onScroll || null;
         this.isDark = options.isDark || false;
 
         const extensions = [
@@ -106,7 +108,7 @@ class MditorEditor {
             bracketMatching(),
             history(),
 
-            // 快捷�?
+            // 快捷键
             keymap.of([
                 ...defaultKeymap,
                 ...historyKeymap,
@@ -117,21 +119,11 @@ class MditorEditor {
             markdown(),
             syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
 
-            // 自定义主�?
+            // 自定义主题
             mditorTheme,
             this.isDark ? oneDark : [],
 
             // 自动换行
-                        // ͬ����������
-            EditorView.domEventHandlers({
-                scroll: (event, view) => {
-                    const editorHeight = view.scrollDOM.scrollHeight - view.scrollDOM.clientHeight;
-                    if (editorHeight > 0) {
-                        const percentage = view.scrollDOM.scrollTop / editorHeight;
-                        this.eventBus.emit('SYNC_SCROLL', percentage);
-                    }
-                }
-            }),
             EditorView.lineWrapping,
 
             // 幽灵提示（空文档时显示）
@@ -141,6 +133,16 @@ class MditorEditor {
             EditorView.updateListener.of(update => {
                 if (update.docChanged) {
                     this.onChange(update.state.doc.toString());
+                }
+            }),
+
+            // 滚动同步监听
+            EditorView.domEventHandlers({
+                scroll: (_event, view) => {
+                    if (!this.onScroll) return;
+                    const maxScroll = view.scrollDOM.scrollHeight - view.scrollDOM.clientHeight;
+                    const percentage = maxScroll > 0 ? view.scrollDOM.scrollTop / maxScroll : 0;
+                    this.onScroll(Math.max(0, Math.min(1, percentage)));
                 }
             })
         ];
@@ -179,22 +181,50 @@ class MditorEditor {
     }
 
     /**
-     * 聚焦编辑�?
+     * 聚焦编辑器
      */
     focus() {
         this.view?.focus();
     }
 
     /**
+     * 获取当前滚动百分比 (0 ~ 1)
+     */
+    getScrollPercentage() {
+        const scroller = this.view?.scrollDOM;
+        if (!scroller) return 0;
+        const maxScroll = scroller.scrollHeight - scroller.clientHeight;
+        if (maxScroll <= 0) return 0;
+        return Math.max(0, Math.min(1, scroller.scrollTop / maxScroll));
+    }
+
+    /**
+     * 按百分比设置滚动位置 (0 ~ 1)
+     */
+    setScrollPercentage(percentage) {
+        const scroller = this.view?.scrollDOM;
+        if (!scroller) return;
+        const clamped = Math.max(0, Math.min(1, Number(percentage) || 0));
+        const maxScroll = scroller.scrollHeight - scroller.clientHeight;
+        scroller.scrollTop = maxScroll > 0 ? maxScroll * clamped : 0;
+    }
+
+    /**
      * 切换主题
      */
     setDarkMode(isDark) {
-        // 重新创建编辑器以应用新主�?
+        // 重新创建编辑器以应用新主题
         if (this.view && this.container) {
             const content = this.getValue();
+            const scrollRatio = this.getScrollPercentage();
             this.destroy();
             this.isDark = isDark;
-            this.init(this.container, content, { onChange: this.onChange, isDark });
+            this.init(this.container, content, {
+                onChange: this.onChange,
+                onScroll: this.onScroll,
+                isDark
+            });
+            requestAnimationFrame(() => this.setScrollPercentage(scrollRatio));
         }
     }
 
@@ -223,7 +253,7 @@ class MditorEditor {
             insertText = `${syntax}${selectedText}${syntax}`;
             cursorOffset = insertText.length;
         } else if (wrap) {
-            // 插入占位�?
+            // 插入占位符
             insertText = `${syntax}文本${syntax}`;
             cursorOffset = syntax.length;
         } else {
@@ -255,4 +285,3 @@ class MditorEditor {
 
 // 导出编辑器类
 window.MditorEditor = MditorEditor;
-

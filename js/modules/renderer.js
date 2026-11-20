@@ -145,6 +145,26 @@ class Renderer {
     }
 
     /**
+     * 获取当前阅读视图滚动百分比 (0 ~ 1)
+     */
+    getScrollPercentage() {
+        if (!this.contentEl) return 0;
+        const maxScroll = this.contentEl.scrollHeight - this.contentEl.clientHeight;
+        if (maxScroll <= 0) return 0;
+        return Math.max(0, Math.min(1, this.contentEl.scrollTop / maxScroll));
+    }
+
+    /**
+     * 按百分比设置阅读视图滚动位置 (0 ~ 1)
+     */
+    setScrollPercentage(percentage) {
+        if (!this.contentEl) return;
+        const clamped = Math.max(0, Math.min(1, Number(percentage) || 0));
+        const maxScroll = this.contentEl.scrollHeight - this.contentEl.clientHeight;
+        this.contentEl.scrollTop = maxScroll > 0 ? maxScroll * clamped : 0;
+    }
+
+    /**
      * 打字机模式滚动
      */
     typewriterScroll() {
