@@ -37,6 +37,87 @@ app.on('second-instance', (event, commandLine, workingDirectory) => {
 // 每个窗口维护自己的状态（通过 webContents.id 关联）
 const windowStates = new Map();
 
+/**
+ * 清理指定窗口的文件监听
+ */
+function clearWindowWatcher(state) {
+    if (!state) return;
+    if (state.watchDebounce) {
+        clearTimeout(state.watchDebounce);
+        state.watchDebounce = null;
+    }
+    if (state.watcher) {
+        try {
+            state.watcher.close();
+        } catch {
+            // ignore
+        }
+        state.watcher = null;
+    }
+    state.watchedPath = null;
+}
+
+/**
+ * 监听当前窗口打开的文件，实现外部修改自动热刷新
+ */
+function watchWindowFile(win, filePath) {
+    if (!win || win.isDestroyed()) return;
+    const state = windowStates.get(win.webContents.id);
+    if (!state) return;
+
+    if (!filePath || !fs.existsSync(filePath)) {
+        clearWindowWatcher(state);
+        return;
+    }
+
+    const normalized = path.normalize(filePath);
+    if (state.watchedPath === normalized && state.watcher) {
+        return;
+    }
+
+    clearWindowWatcher(state);
+    state.watchedPath = normalized;
+
+    const dir = path.dirname(normalized);
+    const targetName = path.basename(normalized).toLowerCase();
+
+    try {
+        // 监听所在目录比直接监听单文件更稳健（兼容原子保存 / 先写临时文件再 rename）
+        state.watcher = fs.watch(dir, { persistent: false }, (_eventType, filename) => {
+            if (filename && path.basename(filename.toString()).toLowerCase() !== targetName) {
+                return;
+            }
+            if (state.watchDebounce) {
+                clearTimeout(state.watchDebounce);
+            }
+            state.watchDebounce = setTimeout(() => {
+                if (win.isDestroyed()) return;
+                // 忽略自身刚保存触发的事件
+                if (Date.now() - (state.lastSelfWriteTime || 0) < 900) {
+                    return;
+                }
+                if (!fs.existsSync(normalized)) return;
+                try {
+                    const content = fs.readFileSync(normalized, 'utf-8');
+                    win.webContents.send('file-externally-changed', {
+                        filePath: normalized,
+                        fileName: path.basename(normalized),
+                        content
+                    });
+                } catch {
+                    // 文件可能正处于写入中，忽略瞬时读取错误
+                }
+            }, 250);
+        });
+        state.watcher.on('error', () => {
+            clearWindowWatcher(state);
+        });
+    } catch (e) {
+        console.error('Failed to watch file:', e);
+        clearWindowWatcher(state);
+    }
+}
+
 // ========== 全局主题状态 ==========
 const settingsPath = path.join(app.getPath('userData'), 'settings.json');
 
@@ -117,7 +198,26 @@ function createWindow(filePathToOpen = null) {
     // 初始化窗口状态
     windowStates.set(win.webContents.id, {
         filePath: filePathToOpen,
-        pendingFile: filePathToOpen
+        pendingFile: filePathToOpen,
+        watcher: null,
+        watchedPath: null,
+        watchDebounce: null,
+        lastSelfWriteTime: 0
+    });
+
+    // 拦截外部链接，统一用系统默认浏览器打开，防止弹出空白 Electron 窗口
+    win.webContents.setWindowOpenHandler(({ url }) => {
+        if (url && (url.startsWith('https://') || url.startsWith('http://'))) {
+            shell.openExternal(url);
+        }
+        return { action: 'deny' };
+    });
+
+    win.webContents.on('will-navigate', (event, url) => {
+        if (url && (url.startsWith('https://') || url.startsWith('http://'))) {
+            event.preventDefault();
+            shell.openExternal(url);
+        }
     });
 
     win.loadFile('index.html');
@@ -129,7 +229,7 @@ function createWindow(filePathToOpen = null) {
     // 保存 ID 用于清理（因为 closed 事件时 webContents 已销毁）
     const webContentsId = win.webContents.id;
 
-    // 窗口即将关闭时询问是否保存高亮
+    // 窗口即将关闭时询问是否保存高亮或未保存内容
     win.on('close', async (e) => {
         e.preventDefault();  // 先阻止关闭
 
@@ -145,8 +245,9 @@ function createWindow(filePathToOpen = null) {
         }
     });
 
-    // 窗口关闭时清理状态
+    // 窗口关闭时清理状态和文件监听
     win.on('closed', () => {
+        clearWindowWatcher(windowStates.get(webContentsId));
         windowStates.delete(webContentsId);
     });
 
@@ -160,6 +261,7 @@ function createWindow(filePathToOpen = null) {
 // ========== IPC 处理 ==========
 // Renderer 拉取初始文件
 ipcMain.handle('get-initial-file', async (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
     const state = windowStates.get(event.sender.id);
     if (state && state.pendingFile && fs.existsSync(state.pendingFile)) {
         try {
@@ -172,6 +274,7 @@ ipcMain.handle('get-initial-file', async (event) => {
             state.filePath = state.pendingFile;
             state.pendingFile = null;  // 消费一次
             app.addRecentDocument(state.filePath);
+            watchWindowFile(win, state.filePath);
             return result;
         } catch (e) {
             console.error('Failed to read initial file:', e);
@@ -187,7 +290,7 @@ ipcMain.handle('open-file-dialog', async (event) => {
     const result = await dialog.showOpenDialog(win, {
         properties: ['openFile'],
         filters: [
-            { name: 'Markdown', extensions: ['md', 'markdown', 'txt'] }
+            { name: 'Markdown', extensions: ['md', 'markdown', 'txt', 'mkd', 'mdx'] }
         ]
     });
 
@@ -199,6 +302,7 @@ ipcMain.handle('open-file-dialog', async (event) => {
         try {
             const content = fs.readFileSync(filePath, 'utf-8');
             app.addRecentDocument(filePath);
+            watchWindowFile(win, filePath);
             return {
                 content,
                 fileName: path.basename(filePath),
@@ -220,7 +324,9 @@ ipcMain.handle('save-file', async (event, { content, forceDialog }) => {
     // 如果有当前文件路径且不强制弹窗，直接保存
     if (currentPath && !forceDialog) {
         try {
+            if (state) state.lastSelfWriteTime = Date.now();
             fs.writeFileSync(currentPath, content, 'utf-8');
+            watchWindowFile(win, currentPath);
             return { success: true, filePath: currentPath, fileName: path.basename(currentPath) };
         } catch (e) {
             return { success: false, error: e.message };
@@ -241,13 +347,38 @@ ipcMain.handle('save-file', async (event, { content, forceDialog }) => {
     }
 
     try {
+        if (state) state.lastSelfWriteTime = Date.now();
         fs.writeFileSync(result.filePath, content, 'utf-8');
         if (state) state.filePath = result.filePath;
         app.addRecentDocument(result.filePath);
+        watchWindowFile(win, result.filePath);
         return { success: true, filePath: result.filePath, fileName: path.basename(result.filePath) };
     } catch (e) {
         return { success: false, error: e.message };
     }
+});
+
+// 同步当前窗口文件路径（拖拽打开 / 新建空白文件时调用）
+ipcMain.handle('set-current-file', async (event, filePath) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    const state = windowStates.get(event.sender.id);
+    if (!state) return false;
+
+    if (filePath && fs.existsSync(filePath)) {
+        state.filePath = path.normalize(filePath);
+        app.addRecentDocument(state.filePath);
+        watchWindowFile(win, state.filePath);
+        return true;
+    }
+
+    state.filePath = null;
+    clearWindowWatcher(state);
+    return true;
+});
+
+// 获取应用版本号
+ipcMain.handle('get-app-version', () => {
+    return require('./package.json').version;
 });
 
 // 新建窗口
@@ -300,9 +431,14 @@ ipcMain.handle('rename-file', async (event, { oldPath, newName }) => {
 
         fs.renameSync(oldPath, newPath);
 
-        // 更新窗口状态
+        // 更新窗口状态与文件监听
+        const win = BrowserWindow.fromWebContents(event.sender);
         const state = windowStates.get(event.sender.id);
-        if (state) state.filePath = newPath;
+        if (state) {
+            state.lastSelfWriteTime = Date.now();
+            state.filePath = newPath;
+        }
+        watchWindowFile(win, newPath);
 
         return { success: true, filePath: newPath, fileName: newName };
     } catch (e) {
@@ -322,10 +458,12 @@ ipcMain.handle('show-in-folder', async (event, filePath) => {
 // 读取文件内容（用于文件树点击打开）
 ipcMain.handle('read-file', async (event, filePath) => {
     try {
+        const win = BrowserWindow.fromWebContents(event.sender);
         const content = fs.readFileSync(filePath, 'utf-8');
         const state = windowStates.get(event.sender.id);
         if (state) state.filePath = filePath;
         app.addRecentDocument(filePath);
+        watchWindowFile(win, filePath);
         return {
             content,
             fileName: path.basename(filePath),

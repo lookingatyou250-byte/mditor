@@ -17,6 +17,99 @@ class Renderer {
      */
     init(contentElement) {
         this.contentEl = contentElement;
+        this._bindContentDelegation();
+    }
+
+    /**
+     * 绑定内容区事件委托（代码块复制 / 外链打开 / 锚点跳转 / 图片灯箱）
+     */
+    _bindContentDelegation() {
+        if (!this.contentEl || this._delegated) return;
+        this._delegated = true;
+
+        this.contentEl.addEventListener('click', async (e) => {
+            // 1. 代码块一键复制
+            const copyBtn = e.target.closest('.code-copy-btn');
+            if (copyBtn) {
+                e.preventDefault();
+                e.stopPropagation();
+                const pre = copyBtn.closest('pre');
+                const codeEl = pre?.querySelector('code');
+                if (codeEl) {
+                    try {
+                        await navigator.clipboard.writeText(codeEl.textContent || '');
+                        copyBtn.textContent = '已复制';
+                        copyBtn.classList.add('copied');
+                        setTimeout(() => {
+                            copyBtn.textContent = '复制';
+                            copyBtn.classList.remove('copied');
+                        }, 1800);
+                    } catch {
+                        copyBtn.textContent = '复制失败';
+                        setTimeout(() => { copyBtn.textContent = '复制'; }, 1500);
+                    }
+                }
+                return;
+            }
+
+            // 2. 链接点击：外链走系统浏览器，页内锚点平滑滚动
+            const link = e.target.closest('a[href]');
+            if (link) {
+                const href = link.getAttribute('href') || '';
+                if (href.startsWith('http://') || href.startsWith('https://')) {
+                    e.preventDefault();
+                    if (window.electronAPI?.openExternal) {
+                        window.electronAPI.openExternal(href);
+                    } else {
+                        window.open(href, '_blank', 'noopener,noreferrer');
+                    }
+                    return;
+                }
+                if (href.startsWith('#')) {
+                    e.preventDefault();
+                    const targetId = decodeURIComponent(href.slice(1));
+                    const targetEl = document.getElementById(targetId) || document.getElementById(`heading-${targetId}`);
+                    if (targetEl) {
+                        targetEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }
+                    return;
+                }
+            }
+
+            // 3. 图片点击：打开灯箱放大预览
+            const img = e.target.closest('img');
+            if (img && img.src) {
+                this._openImageLightbox(img.src, img.alt || '');
+            }
+        });
+    }
+
+    /**
+     * 打开图片灯箱
+     */
+    _openImageLightbox(src, alt) {
+        const lightbox = document.getElementById('image-lightbox');
+        const lightboxImg = document.getElementById('image-lightbox-img');
+        const lightboxCaption = document.getElementById('image-lightbox-caption');
+        if (!lightbox || !lightboxImg) return;
+
+        lightboxImg.src = src;
+        lightboxImg.alt = alt;
+        if (lightboxCaption) {
+            lightboxCaption.textContent = alt;
+            lightboxCaption.style.display = alt ? 'block' : 'none';
+        }
+        lightbox.style.display = 'flex';
+    }
+
+    /**
+     * 清空内容区
+     */
+    clear() {
+        if (this.contentEl) {
+            this.contentEl.innerHTML = '';
+            this.contentEl.scrollTop = 0;
+        }
     }
 
     /**

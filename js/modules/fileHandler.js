@@ -19,7 +19,6 @@ class FileHandler {
 
         this._setupDragAndDrop();
         this._setupFileInput();
-        this._setupKeyboard();
     }
 
     /**
@@ -124,7 +123,8 @@ class FileHandler {
 
             this.eventBus.emit(Events.FILE_LOADED, {
                 content,
-                fileName: file.name
+                fileName: file.name,
+                filePath: file.path || null
             });
         };
 

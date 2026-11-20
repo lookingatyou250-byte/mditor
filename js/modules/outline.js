@@ -8,8 +8,23 @@ class Outline {
         this.state = state;
         this.containerEl = null;
         this.currentActive = null;
+        this._observer = null;
 
         this._bindEvents();
+    }
+
+    /**
+     * 清空大纲
+     */
+    clear() {
+        if (this._observer) {
+            this._observer.disconnect();
+            this._observer = null;
+        }
+        this.currentActive = null;
+        if (this.containerEl) {
+            this.containerEl.innerHTML = '<div class="outline-empty">暂无目录</div>';
+        }
     }
 
     /**
@@ -91,13 +106,18 @@ class Outline {
      * 设置滚动监听
      */
     _setupScrollSpy() {
+        if (this._observer) {
+            this._observer.disconnect();
+            this._observer = null;
+        }
+
         const contentEl = document.querySelector('.content-area');
         if (!contentEl) return;
 
         const headings = contentEl.querySelectorAll('h1, h2, h3, h4, h5, h6');
         if (headings.length === 0) return;
 
-        const observer = new IntersectionObserver((entries) => {
+        this._observer = new IntersectionObserver((entries) => {
             entries.forEach(entry => {
                 if (entry.isIntersecting) {
                     this._setActive(entry.target.id);
@@ -111,7 +131,7 @@ class Outline {
 
         headings.forEach(heading => {
             if (heading.id) {
-                observer.observe(heading);
+                this._observer.observe(heading);
             }
         });
     }

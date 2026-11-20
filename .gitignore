@@ -16,5 +16,12 @@ Thumbs.db
 *.log
 npm-debug.log*
 
+# Backups & local scratch / test files
+*.bak
+research-exit/
+test_*.html
+test_*.md
+test-highlight.md
+
 # Lock files (optional, can keep)
 # package-lock.json

@@ -33,6 +33,13 @@ class App {
         // 设置面板状态
         this.settingsVisible = false;
         this.fontSize = parseInt(localStorage.getItem('mditor-font-size')) || 16;
+        this.readerFont = localStorage.getItem('mditor-reader-font') || 'sans';
+        this.contentWidth = localStorage.getItem('mditor-content-width') || 'medium';
+
+        // 页内搜索状态
+        this.searchVisible = false;
+        this.searchMatches = [];
+        this.searchIndex = -1;
 
         // 斜杠命令
         this.slashMenuVisible = false;
@@ -132,6 +139,11 @@ class App {
         this._applySidebarMode();  // 应用默认侧边栏状态（隐藏）
         this._initScrollbar();     // 初始化自定义滚动条
         this._initSettings();      // 初始化设置
+        this._initReadingProgress(); // 初始化顶部阅读进度条
+        this._initSearch();        // 初始化页内搜索 (Ctrl+F)
+        this._initLightbox();      // 初始化图片灯箱
+        this._initZoomShortcut();  // 初始化 Ctrl+滚轮缩放
+        this._initLiveReload();    // 初始化外部文件变更热刷新
         this._loadCustomColors();  // 加载自定义颜色
         this._checkInitialFile();
     }
@@ -221,8 +233,20 @@ class App {
             fontSizeValue: document.getElementById('font-size-value'),
             fontSizeDec: document.getElementById('font-size-dec'),
             fontSizeInc: document.getElementById('font-size-inc'),
+            fontFamilySegment: document.getElementById('font-family-segment'),
+            contentWidthSegment: document.getElementById('content-width-segment'),
             checkUpdateBtn: document.getElementById('check-update-btn'),
             appVersion: document.getElementById('app-version'),
+
+            // 阅读进度条 & 搜索条 & 图片灯箱
+            readingProgressBar: document.getElementById('reading-progress-bar'),
+            searchBar: document.getElementById('search-bar'),
+            searchInput: document.getElementById('search-input'),
+            searchCount: document.getElementById('search-count'),
+            searchPrev: document.getElementById('search-prev'),
+            searchNext: document.getElementById('search-next'),
+            searchClose: document.getElementById('search-close'),
+            imageLightbox: document.getElementById('image-lightbox'),
         };
     }
 
@@ -239,9 +263,16 @@ class App {
      * 绑定事件
      */
     _bindEvents() {
-        // 文件事件
-        this.eventBus.on(Events.FILE_LOADED, ({ content, fileName }) => {
+        // 文件事件（拖拽或原生文件选择器触发）
+        this.eventBus.on(Events.FILE_LOADED, ({ content, fileName, filePath }) => {
+            if (filePath) {
+                this.currentFilePath = filePath;
+                window.electronAPI?.setCurrentFile?.(filePath);
+            }
             this._onFileLoaded(content, fileName);
+            if (filePath) {
+                this._loadFileTree();
+            }
         });
 
         this.eventBus.on(Events.FILE_ERROR, ({ message }) => {
@@ -294,11 +325,11 @@ class App {
             this._toggleFocusMode();
         });
 
-        // 品牌链接点击 → 打开官网
+        // 品牌链接点击 → 打开仓库
         this.elements.brandLink?.addEventListener('click', (e) => {
             e.preventDefault();
-            window.electronAPI?.openExternal?.('https://github.com/erwinchang86/mditor')
-                || window.open('https://github.com/erwinchang86/mditor', '_blank');
+            window.electronAPI?.openExternal?.('https://github.com/lookingatyou250-byte/mditor')
+                || window.open('https://github.com/lookingatyou250-byte/mditor', '_blank');
         });
 
         // 文件菜单按钮
@@ -647,6 +678,31 @@ class App {
                 this._toggleHighlight();
             }
 
+            // Ctrl+F 页内查找
+            if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'f') {
+                e.preventDefault();
+                this._openSearch();
+            }
+
+            // Ctrl+0 重置字号
+            if ((e.ctrlKey || e.metaKey) && e.key === '0') {
+                e.preventDefault();
+                this.fontSize = 16;
+                this._updateFontSizeUI();
+                this._applyFontSize();
+                this._saveFontSize();
+                this._showToast('字号已重置为 16px', 'info');
+            }
+
+            // Esc 关闭灯箱或搜索条
+            if (e.key === 'Escape') {
+                if (this.elements.imageLightbox && this.elements.imageLightbox.style.display !== 'none') {
+                    this._closeLightbox();
+                } else if (this.searchVisible) {
+                    this._closeSearch();
+                }
+            }
+
             // Ctrl+Shift+H 保存高亮到本地
             if (e.ctrlKey && e.shiftKey && e.key === 'H') {
                 e.preventDefault();
@@ -708,12 +764,26 @@ class App {
         this._updateSaveIndicator();
         this._updateWordCount(content);
 
+        // 设置解析基准目录，确保本地相对路径图片正常显示
+        this.parser.setBasePath(this.currentFilePath);
+
+        // 关闭旧的搜索高亮
+        if (this.searchVisible) {
+            this._closeSearch();
+        }
+
         // 解析并渲染
         const html = this.parser.parse(content);
         const outline = this.parser.extractOutline(content);
 
         this.eventBus.emit(Events.CONTENT_PARSED, { html, outline });
         this.eventBus.emit(Events.OUTLINE_UPDATED, outline);
+
+        // 新文件重置滚动条与进度条
+        if (this.elements.content) {
+            this.elements.content.scrollTop = 0;
+        }
+        this._updateReadingProgress();
 
         // 同步编辑器
         if (this.editor && this.isEditMode) {
@@ -742,7 +812,7 @@ class App {
     async _openFile() {
         if (window.electronAPI?.openFileDialog) {
             const result = await window.electronAPI.openFileDialog();
-            if (result && result.content) {
+            if (result && result.content !== undefined) {
                 this.currentFilePath = result.filePath;
                 this._onFileLoaded(result.content, result.fileName);
                 this._loadFileTree();
@@ -761,6 +831,8 @@ class App {
 
         this.currentContent = '';
         this.currentFilePath = null;
+        this.parser.setBasePath(null);
+        window.electronAPI?.setCurrentFile?.(null);
 
         if (this.elements.fileName) {
             this.elements.fileName.textContent = '未命名';
@@ -774,9 +846,10 @@ class App {
         }
 
         this._setMode('edit');
-        this.hasUnsavedChanges = true;
+        this.hasUnsavedChanges = false;
         this._updateSaveIndicator();
         this._updateWordCount('');
+        this._updateReadingProgress();
     }
 
     /**
@@ -956,7 +1029,7 @@ class App {
                 // 文件点击事件 - 打开文件
                 content.addEventListener('click', async () => {
                     const data = await window.electronAPI.readFile(item.path);
-                    if (data && data.content) {
+                    if (data && data.content !== undefined) {
                         this.currentFilePath = data.filePath;
                         this._onFileLoaded(data.content, data.fileName);
 
@@ -1065,7 +1138,10 @@ class App {
                 this.editor.init(this.elements.editorContainer, this.currentContent, {
                     isDark,
                     onChange: (content) => {
+                        if (content === this.currentContent) return;
                         this.currentContent = content;
+                        this.hasUnsavedChanges = true;
+                        this._updateSaveIndicator();
                         this._updateWordCount(content);
                         const outline = this.parser.extractOutline(content);
                         this.eventBus.emit(Events.OUTLINE_UPDATED, outline);
@@ -1096,6 +1172,10 @@ class App {
             requestAnimationFrame(() => {
                 this.editor?.setScrollPercentage(readScrollRatio);
             });
+            this._updateReadingProgress();
+            if (this.searchVisible) {
+                this._performSearch();
+            }
 
         } else if (mode === 'read' && this.isEditMode) {
             // 切换前记录编辑器的滚动进度
@@ -1109,6 +1189,7 @@ class App {
             }
 
             // 如果有文件打开但内容为空，显示空白而不是欢迎提示
+            this.parser.setBasePath(this.currentFilePath);
             const hasContent = this.currentContent && this.currentContent.trim();
             const html = hasContent
                 ? this.parser.parse(this.currentContent)
@@ -1123,6 +1204,10 @@ class App {
             // 同步编辑器的滚动进度到阅读视图
             requestAnimationFrame(() => {
                 this.renderer.setScrollPercentage(editScrollRatio);
+                this._updateReadingProgress();
+                if (this.searchVisible) {
+                    this._performSearch();
+                }
             });
 
             // 恢复之前保存的高亮（临时的，在模式切换时保存的）
@@ -1168,14 +1253,19 @@ class App {
     }
 
     /**
-     * 更新字数统计
+     * 更新字数与预计阅读时长统计
      */
     _updateWordCount(content) {
         if (this.elements.wordCount) {
             const chineseChars = (content.match(/[\u4e00-\u9fa5]/g) || []).length;
             const englishWords = (content.match(/[a-zA-Z]+/g) || []).length;
             const total = chineseChars + englishWords;
-            this.elements.wordCount.textContent = `${total} 字`;
+            if (total === 0) {
+                this.elements.wordCount.textContent = '0 字';
+            } else {
+                const minutes = Math.max(1, Math.ceil(total / 350));
+                this.elements.wordCount.textContent = `${total} 字 · 约 ${minutes} 分钟`;
+            }
         }
     }
 
@@ -1258,12 +1348,12 @@ class App {
             }
         }
 
-        // 切换代码高亮主题
+        // 切换代码高亮主题（使用本地离线样式）
         const hljsTheme = document.getElementById('hljs-theme');
         if (hljsTheme) {
             hljsTheme.href = theme === 'dark'
-                ? 'https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css'
-                : 'https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css';
+                ? 'lib/hljs-github-dark.min.css'
+                : 'lib/hljs-github.min.css';
         }
     }
 
@@ -3653,9 +3743,23 @@ class App {
     /**
      * 初始化设置
      */
-    _initSettings() {
+    async _initSettings() {
         this._bindSettingsEvents();
         this._applyFontSize();
+        this._applyReaderFont();
+        this._applyContentWidth();
+
+        // 动态读取应用版本号
+        if (this.elements.appVersion && window.electronAPI?.getAppVersion) {
+            try {
+                const version = await window.electronAPI.getAppVersion();
+                if (version) {
+                    this.elements.appVersion.textContent = `v${version}`;
+                }
+            } catch {
+                // 保持默认文本
+            }
+        }
     }
 
     /**
@@ -3710,6 +3814,24 @@ class App {
             }
         });
 
+        // 阅读字体切换（无衬线 / 衬线体）
+        this.elements.fontFamilySegment?.addEventListener('click', (e) => {
+            const btn = e.target.closest('[data-font]');
+            if (!btn) return;
+            this.readerFont = btn.dataset.font;
+            localStorage.setItem('mditor-reader-font', this.readerFont);
+            this._applyReaderFont();
+        });
+
+        // 版心宽度切换（窄 / 适中 / 宽）
+        this.elements.contentWidthSegment?.addEventListener('click', (e) => {
+            const btn = e.target.closest('[data-width]');
+            if (!btn) return;
+            this.contentWidth = btn.dataset.width;
+            localStorage.setItem('mditor-content-width', this.contentWidth);
+            this._applyContentWidth();
+        });
+
         // 检查更新
         this.elements.checkUpdateBtn?.addEventListener('click', () => {
             this._checkForUpdates();
@@ -3725,6 +3847,7 @@ class App {
             this.elements.settingsPanel.style.display = 'flex';
         }
         this._updateFontSizeUI();
+        this._updateTypographyUI();
     }
 
     /**
@@ -3750,19 +3873,55 @@ class App {
     }
 
     /**
-     * 应用字号
+     * 更新字体/版心分段按钮激活状态
+     */
+    _updateTypographyUI() {
+        this.elements.fontFamilySegment?.querySelectorAll('[data-font]').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.font === this.readerFont);
+        });
+        this.elements.contentWidthSegment?.querySelectorAll('[data-width]').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.width === this.contentWidth);
+        });
+    }
+
+    /**
+     * 应用字号（同时作用于阅读与编辑模式）
      */
     _applyFontSize() {
-        // 应用到编辑器
-        document.documentElement.style.setProperty('--editor-font-size', `${this.fontSize}px`);
+        const px = `${this.fontSize}px`;
+        document.documentElement.style.setProperty('--editor-font-size', px);
+        document.documentElement.style.setProperty('--reader-font-size', px);
 
         // 如果编辑器已初始化，更新其样式
         if (this.editor?.view) {
             const scroller = this.elements.editorContainer?.querySelector('.cm-scroller');
             if (scroller) {
-                scroller.style.fontSize = `${this.fontSize}px`;
+                scroller.style.fontSize = px;
             }
         }
+    }
+
+    /**
+     * 应用阅读字体
+     */
+    _applyReaderFont() {
+        const fontVar = this.readerFont === 'serif' ? 'var(--font-serif)' : 'var(--font-sans)';
+        document.documentElement.style.setProperty('--reader-font-family', fontVar);
+        this._updateTypographyUI();
+    }
+
+    /**
+     * 应用版心宽度
+     */
+    _applyContentWidth() {
+        const widthMap = {
+            narrow: '680px',
+            medium: '800px',
+            wide: '960px'
+        };
+        const width = widthMap[this.contentWidth] || '800px';
+        document.documentElement.style.setProperty('--content-max-width', width);
+        this._updateTypographyUI();
     }
 
     /**
@@ -3799,7 +3958,7 @@ class App {
                 }
             } else {
                 // 非 Electron 环境，打开 GitHub releases
-                window.open('https://github.com/erwinchang86/mditor/releases', '_blank');
+                window.open('https://github.com/lookingatyou250-byte/mditor/releases', '_blank');
                 btn.textContent = '检查更新';
                 btn.classList.remove('loading');
             }
@@ -3812,12 +3971,353 @@ class App {
         }
     }
 
+    // ========== 阅读进度条 / 灯箱 / 缩放 / 外部热刷新 / 页内搜索 ==========
+
+    /**
+     * 初始化顶部阅读进度条
+     */
+    _initReadingProgress() {
+        this.elements.content?.addEventListener('scroll', () => {
+            this._updateReadingProgress();
+        }, { passive: true });
+    }
+
+    /**
+     * 更新顶部阅读进度条
+     */
+    _updateReadingProgress() {
+        const bar = this.elements.readingProgressBar;
+        if (!bar) return;
+        if (this.isEditMode || !this.elements.content) {
+            bar.style.width = '0%';
+            return;
+        }
+        const el = this.elements.content;
+        const maxScroll = el.scrollHeight - el.clientHeight;
+        const pct = maxScroll > 0 ? (el.scrollTop / maxScroll) * 100 : 0;
+        bar.style.width = `${Math.max(0, Math.min(100, pct)).toFixed(1)}%`;
+    }
+
+    /**
+     * 初始化图片灯箱关闭交互
+     */
+    _initLightbox() {
+        const lightbox = this.elements.imageLightbox;
+        if (!lightbox) return;
+        lightbox.addEventListener('click', (e) => {
+            if (e.target === lightbox || e.target.id === 'image-lightbox-caption') {
+                this._closeLightbox();
+            }
+        });
+    }
+
+    _closeLightbox() {
+        if (this.elements.imageLightbox) {
+            this.elements.imageLightbox.style.display = 'none';
+        }
+    }
+
+    /**
+     * 初始化 Ctrl + 滚轮快速缩放字号
+     */
+    _initZoomShortcut() {
+        window.addEventListener('wheel', (e) => {
+            if (!(e.ctrlKey || e.metaKey)) return;
+            e.preventDefault();
+            const delta = e.deltaY < 0 ? 1 : -1;
+            const next = Math.max(12, Math.min(24, this.fontSize + delta));
+            if (next !== this.fontSize) {
+                this.fontSize = next;
+                this._updateFontSizeUI();
+                this._applyFontSize();
+                this._saveFontSize();
+            }
+        }, { passive: false });
+    }
+
+    /**
+     * 初始化外部文件变更自动热刷新 (Live Reload)
+     */
+    _initLiveReload() {
+        if (!window.electronAPI?.onFileExternallyChanged) return;
+
+        window.electronAPI.onFileExternallyChanged(({ filePath, fileName, content }) => {
+            if (!this.currentFilePath) return;
+            const currentNorm = this.currentFilePath.replace(/\\/g, '/').toLowerCase();
+            const incomingNorm = String(filePath || '').replace(/\\/g, '/').toLowerCase();
+            if (currentNorm !== incomingNorm) return;
+
+            const localContent = this.editor ? this.editor.getValue() : this.currentContent;
+            if (content === localContent) return;
+
+            // 若当前有尚未保存的本地修改，不强行覆盖，仅做轻提示
+            if (this.hasUnsavedChanges) {
+                this._showToast(`${fileName} 已在外部更新（当前有未保存修改，未自动覆盖）`, 'info');
+                return;
+            }
+
+            const readRatio = this.renderer.getScrollPercentage();
+            const editRatio = this.editor ? this.editor.getScrollPercentage() : 0;
+
+            this.currentContent = content;
+            this._updateWordCount(content);
+            this.parser.setBasePath(this.currentFilePath);
+
+            const outline = this.parser.extractOutline(content);
+            this.eventBus.emit(Events.OUTLINE_UPDATED, outline);
+
+            if (this.isEditMode && this.editor) {
+                this.editor.setValue(content);
+                // setValue 会触发 onChange 标脏，立即还原未修改状态并取消自动保存
+                if (this.autoSaveTimer) {
+                    clearTimeout(this.autoSaveTimer);
+                    this.autoSaveTimer = null;
+                }
+                this.hasUnsavedChanges = false;
+                this.elements.saveIndicator?.classList.remove('saving');
+                this._updateSaveIndicator();
+                requestAnimationFrame(() => this.editor?.setScrollPercentage(editRatio));
+            } else {
+                const html = content.trim() ? this.parser.parse(content) : ' ';
+                this.eventBus.emit(Events.CONTENT_PARSED, { html, outline });
+                requestAnimationFrame(() => {
+                    this.renderer.setScrollPercentage(readRatio);
+                    this._updateReadingProgress();
+                });
+            }
+
+            this._showToast('检测到外部更新，已自动刷新', 'info');
+        });
+    }
+
+    /**
+     * 初始化页内查找 (Ctrl+F)
+     */
+    _initSearch() {
+        const { searchInput, searchPrev, searchNext, searchClose } = this.elements;
+        if (!searchInput) return;
+
+        searchInput.addEventListener('input', () => {
+            this._performSearch();
+        });
+
+        searchInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                this._navigateSearch(e.shiftKey ? -1 : 1);
+            } else if (e.key === 'Escape') {
+                e.preventDefault();
+                this._closeSearch();
+            }
+        });
+
+        searchPrev?.addEventListener('click', () => this._navigateSearch(-1));
+        searchNext?.addEventListener('click', () => this._navigateSearch(1));
+        searchClose?.addEventListener('click', () => this._closeSearch());
+    }
+
+    _openSearch() {
+        const { searchBar, searchInput } = this.elements;
+        if (!searchBar || !searchInput) return;
+
+        this.searchVisible = true;
+        searchBar.style.display = 'flex';
+
+        // 若有选中文本则自动填入搜索框
+        const selected = window.getSelection()?.toString()?.trim();
+        if (selected && selected.length <= 80 && !selected.includes('\n')) {
+            searchInput.value = selected;
+        }
+
+        searchInput.focus();
+        searchInput.select();
+        this._performSearch();
+    }
+
+    _closeSearch() {
+        this.searchVisible = false;
+        if (this.elements.searchBar) {
+            this.elements.searchBar.style.display = 'none';
+        }
+        this._clearSearchHighlights();
+        this.searchMatches = [];
+        this.searchIndex = -1;
+        if (this.elements.searchCount) {
+            this.elements.searchCount.textContent = '';
+        }
+    }
+
+    _clearSearchHighlights() {
+        if (!this.elements.content) return;
+        const marks = this.elements.content.querySelectorAll('mark.search-match');
+        marks.forEach(mark => {
+            const parent = mark.parentNode;
+            if (!parent) return;
+            parent.replaceChild(document.createTextNode(mark.textContent || ''), mark);
+            parent.normalize();
+        });
+    }
+
+    _performSearch() {
+        const query = this.elements.searchInput?.value || '';
+        this._clearSearchHighlights();
+        this.searchMatches = [];
+        this.searchIndex = -1;
+
+        if (!query) {
+            if (this.elements.searchCount) this.elements.searchCount.textContent = '';
+            return;
+        }
+
+        const lowerQuery = query.toLowerCase();
+
+        if (this.isEditMode && this.editor?.view) {
+            // 编辑模式：在 CodeMirror 文档中定位所有匹配位置
+            const text = this.editor.getValue();
+            const lowerText = text.toLowerCase();
+            let pos = 0;
+            while (pos < lowerText.length) {
+                const idx = lowerText.indexOf(lowerQuery, pos);
+                if (idx === -1) break;
+                this.searchMatches.push({ from: idx, to: idx + query.length });
+                pos = idx + Math.max(1, query.length);
+            }
+        } else if (this.elements.content) {
+            // 阅读模式：遍历文本节点包裹 <mark class="search-match">
+            const walker = document.createTreeWalker(
+                this.elements.content,
+                NodeFilter.SHOW_TEXT,
+                {
+                    acceptNode: (node) => {
+                        const parent = node.parentElement;
+                        if (!parent) return NodeFilter.FILTER_REJECT;
+                        if (parent.closest('.code-copy-btn, script, style')) {
+                            return NodeFilter.FILTER_REJECT;
+                        }
+                        return node.nodeValue && node.nodeValue.toLowerCase().includes(lowerQuery)
+                            ? NodeFilter.FILTER_ACCEPT
+                            : NodeFilter.FILTER_SKIP;
+                    }
+                }
+            );
+
+            const textNodes = [];
+            let currentNode;
+            while ((currentNode = walker.nextNode())) {
+                textNodes.push(currentNode);
+            }
+
+            textNodes.forEach(node => {
+                const value = node.nodeValue;
+                const lowerVal = value.toLowerCase();
+                let lastIdx = 0;
+                const frag = document.createDocumentFragment();
+                let matchIdx;
+
+                while ((matchIdx = lowerVal.indexOf(lowerQuery, lastIdx)) !== -1) {
+                    if (matchIdx > lastIdx) {
+                        frag.appendChild(document.createTextNode(value.slice(lastIdx, matchIdx)));
+                    }
+                    const mark = document.createElement('mark');
+                    mark.className = 'search-match';
+                    mark.textContent = value.slice(matchIdx, matchIdx + query.length);
+                    frag.appendChild(mark);
+                    this.searchMatches.push(mark);
+                    lastIdx = matchIdx + query.length;
+                }
+
+                if (lastIdx < value.length) {
+                    frag.appendChild(document.createTextNode(value.slice(lastIdx)));
+                }
+                node.parentNode?.replaceChild(frag, node);
+            });
+        }
+
+        if (this.searchMatches.length > 0) {
+            this.searchIndex = 0;
+            this._activateSearchMatch();
+        } else if (this.elements.searchCount) {
+            this.elements.searchCount.textContent = '0 / 0';
+        }
+    }
+
+    _navigateSearch(delta) {
+        if (this.searchMatches.length === 0) return;
+        this.searchIndex = (this.searchIndex + delta + this.searchMatches.length) % this.searchMatches.length;
+        this._activateSearchMatch();
+    }
+
+    _activateSearchMatch() {
+        const total = this.searchMatches.length;
+        if (total === 0 || this.searchIndex < 0) return;
+
+        if (this.elements.searchCount) {
+            this.elements.searchCount.textContent = `${this.searchIndex + 1} / ${total}`;
+        }
+
+        if (this.isEditMode && this.editor?.view) {
+            const match = this.searchMatches[this.searchIndex];
+            this.editor.view.dispatch({
+                selection: { anchor: match.from, head: match.to },
+                scrollIntoView: true
+            });
+        } else {
+            this.searchMatches.forEach(el => el.classList.remove('search-match-current'));
+            const current = this.searchMatches[this.searchIndex];
+            if (current && current.scrollIntoView) {
+                current.classList.add('search-match-current');
+                current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+        }
+    }
+
+    /**
+     * 显示未保存正文确认对话框
+     */
+    _showUnsavedContentDialog() {
+        return new Promise((resolve) => {
+            const dialog = document.getElementById('unsaved-content-dialog');
+            if (!dialog) {
+                resolve('discard');
+                return;
+            }
+
+            dialog.style.display = 'flex';
+            const clickHandler = (e) => {
+                const btn = e.target.closest('[data-action]');
+                if (btn) {
+                    dialog.style.display = 'none';
+                    dialog.removeEventListener('click', clickHandler);
+                    resolve(btn.dataset.action);
+                }
+            };
+            dialog.addEventListener('click', clickHandler);
+        });
+    }
+
     /**
      * 处理窗口关闭事件（由 main.js 调用）
      * 返回 true 表示可以关闭，false 表示取消关闭
      */
     async _handleWindowClose() {
-        // 检查是否有未保存的高亮
+        // 1. 检查未保存的正文内容
+        const currentText = this.editor ? this.editor.getValue() : this.currentContent;
+        const hasPendingTextChanges = this.hasUnsavedChanges && (this.currentFilePath || (currentText && currentText.trim().length > 0));
+        if (hasPendingTextChanges) {
+            const action = await this._showUnsavedContentDialog();
+            if (action === 'cancel') {
+                return false;
+            }
+            if (action === 'save') {
+                await this._saveFile(false);
+                if (this.hasUnsavedChanges) {
+                    // 用户在保存对话框点击了取消或保存失败，不关闭窗口
+                    return false;
+                }
+            }
+        }
+
+        // 2. 检查是否有未保存的高亮
         if (!this._hasUnsavedHighlights()) {
             return true;  // 没有未保存的高亮，允许关闭
         }

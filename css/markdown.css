@@ -3,9 +3,14 @@
    "Typora-like" Aesthetics
    ---------------------- */
 
-/* 内容区撑满宽度，内部内容控制边距 */
+/* 内容区撑满宽度，内部内容控制边距与排版变量 */
+.content-area {
+    font-family: var(--reader-font-family);
+    font-size: var(--reader-font-size);
+}
+
 .content-area > * {
-    max-width: min(800px, 100% - 80px);
+    max-width: min(var(--content-max-width), 100% - 80px);
     margin-left: auto;
     margin-right: auto;
     padding-right: 60px; /* 内容右侧边距 */
@@ -22,10 +27,10 @@
     }
 }
 
-/* 大窗口时保持舒适阅读宽度 */
+/* 大窗口时遵循用户版心宽度设置 */
 @media (min-width: 1200px) {
     .content-area > * {
-        max-width: 840px;
+        max-width: var(--content-max-width);
     }
 }
 
@@ -77,7 +82,7 @@ h6 {
 p {
     margin-bottom: 1.2em;
     line-height: 1.8;
-    font-size: 16px;
+    font-size: var(--reader-font-size);
     color: var(--text-primary);
 }
 
@@ -188,6 +193,46 @@ pre::after {
     text-transform: uppercase;
     font-weight: 500;
     opacity: 0.7;
+    transition: opacity 0.15s ease;
+}
+
+pre:hover::after {
+    opacity: 0;
+}
+
+/* 代码块一键复制按钮 */
+.code-copy-btn {
+    position: absolute;
+    top: 8px;
+    right: 10px;
+    padding: 3px 9px;
+    font-family: var(--font-sans);
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    background: var(--bg-card);
+    border: 1px solid var(--color-border);
+    border-radius: 5px;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.15s ease, color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+    z-index: 2;
+}
+
+pre:hover .code-copy-btn,
+.code-copy-btn:focus-visible,
+.code-copy-btn.copied {
+    opacity: 1;
+}
+
+.code-copy-btn:hover {
+    color: var(--text-primary);
+    border-color: var(--color-accent);
+}
+
+.code-copy-btn.copied {
+    color: var(--color-accent);
+    border-color: var(--color-accent);
 }
 
 code {
@@ -252,6 +297,22 @@ img {
     max-width: 100%;
     border-radius: var(--radius-md);
     box-shadow: var(--shadow-md);
+    cursor: zoom-in;
+    transition: transform 0.2s ease;
+}
+
+/* 页内搜索高亮 */
+.content-area mark.search-match {
+    background: rgba(217, 119, 87, 0.25);
+    color: inherit;
+    padding: 0 2px;
+    border-radius: 2px;
+}
+
+.content-area mark.search-match.search-match-current {
+    background: var(--color-accent);
+    color: #FAF9F5;
+    box-shadow: 0 0 0 1px var(--color-accent);
 }
 
 figcaption {

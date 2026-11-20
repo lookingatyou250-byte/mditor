@@ -6,7 +6,55 @@ class MarkdownParser {
     constructor(eventBus, state) {
         this.eventBus = eventBus;
         this.state = state;
+        this.baseDir = null;
         this._configureMarked();
+    }
+
+    /**
+     * 设置当前文档路径，用于解析相对路径图片
+     */
+    setBasePath(filePath) {
+        if (!filePath) {
+            this.baseDir = null;
+            return;
+        }
+        const normalized = String(filePath).replace(/\\/g, '/');
+        const lastSlash = normalized.lastIndexOf('/');
+        this.baseDir = lastSlash >= 0 ? normalized.slice(0, lastSlash) : null;
+    }
+
+    /**
+     * 解析相对路径图片为 file:// URL
+     */
+    _resolveImageUrl(href) {
+        if (!href) return '';
+        const trimmed = href.trim();
+        // 已经是网络链接、data URI、blob 或 file://
+        if (/^(https?:|data:|blob:|file:)/i.test(trimmed)) {
+            return trimmed;
+        }
+        // Windows 绝对路径 (如 C:\foo\bar.png)
+        if (/^[a-zA-Z]:[\\/]/.test(trimmed)) {
+            return 'file:///' + encodeURI(trimmed.replace(/\\/g, '/'));
+        }
+        // 相对路径：基于当前打开的 Markdown 文件目录拼接并归一化
+        if (this.baseDir) {
+            const cleaned = trimmed.replace(/\\/g, '/');
+            const baseParts = this.baseDir.split('/');
+            const relParts = cleaned.split('/');
+            for (const part of relParts) {
+                if (!part || part === '.') continue;
+                if (part === '..') {
+                    if (baseParts.length > 1) baseParts.pop();
+                } else {
+                    baseParts.push(part);
+                }
+            }
+            const joined = baseParts.join('/');
+            const prefix = /^[a-zA-Z]:/.test(joined) ? 'file:///' : 'file://';
+            return prefix + encodeURI(joined);
+        }
+        return trimmed;
     }
 
     /**
@@ -31,11 +79,11 @@ class MarkdownParser {
         // 自定义渲染器
         const renderer = new marked.Renderer();
 
-        // 代码块：添加语言类名和复制按钮占位
+        // 代码块：添加语言类名和一键复制按钮
         renderer.code = (code, language) => {
-            const lang = language || 'plaintext';
+            const lang = this._escapeHtml(language || 'plaintext');
             const escapedCode = this._escapeHtml(code);
-            return `<pre class="code-block" data-lang="${lang}"><code class="language-${lang}">${escapedCode}</code></pre>`;
+            return `<pre class="code-block" data-lang="${lang}"><button class="code-copy-btn" type="button" title="复制代码" aria-label="复制代码">复制</button><code class="language-${lang}">${escapedCode}</code></pre>`;
         };
 
         // 链接：外部链接新标签打开
@@ -46,12 +94,13 @@ class MarkdownParser {
             return `<a href="${this._escapeHtml(href)}"${titleAttr}${target}>${text}</a>`;
         };
 
-        // 图片：添加懒加载和容器
+        // 图片：解析本地相对路径并添加懒加载和容器
         renderer.image = (href, title, text) => {
+            const resolvedHref = this._resolveImageUrl(href);
             const titleAttr = title ? ` title="${this._escapeHtml(title)}"` : '';
             const altText = this._escapeHtml(text);
             return `<figure class="image-container">
-        <img src="${this._escapeHtml(href)}" alt="${altText}"${titleAttr} loading="lazy">
+        <img src="${this._escapeHtml(resolvedHref)}" alt="${altText}"${titleAttr} loading="lazy">
         ${text ? `<figcaption>${altText}</figcaption>` : ''}
       </figure>`;
         };
@@ -149,8 +198,9 @@ class MarkdownParser {
         }
 
         return DOMPurify.sanitize(html, {
-            ALLOWED_TAGS: ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'span', 'div', 'ul', 'ol', 'li', 'blockquote', 'pre', 'code', 'a', 'img', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'strong', 'em', 'del', 'br', 'hr', 'input', 'figure', 'figcaption', 'mark'],
-            ALLOWED_ATTR: ['href', 'title', 'class', 'id', 'src', 'alt', 'loading', 'type', 'checked', 'disabled', 'target', 'rel', 'style', 'data-lang', 'start'],
+            ALLOWED_TAGS: ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'span', 'div', 'ul', 'ol', 'li', 'blockquote', 'pre', 'code', 'a', 'img', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'strong', 'em', 'del', 'br', 'hr', 'input', 'figure', 'figcaption', 'mark', 'button', 'details', 'summary'],
+            ALLOWED_ATTR: ['href', 'title', 'class', 'id', 'src', 'alt', 'loading', 'type', 'checked', 'disabled', 'target', 'rel', 'style', 'data-lang', 'start', 'aria-label', 'open'],
+            ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp|file|data):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
             FORBID_TAGS: ['script', 'style', 'iframe', 'form', 'object', 'embed'],
             FORBID_ATTR: ['onerror', 'onclick', 'onload', 'onmouseover', 'onfocus', 'onblur'],
             ALLOW_DATA_ATTR: true

@@ -24,8 +24,11 @@
   --sidebar-width: 280px;
   --toolbar-height: 50px;
 
-  /* 编辑器字号（可被 JS 覆盖） */
+  /* 阅读与编辑排版变量（可被 JS 动态覆盖） */
   --editor-font-size: 16px;
+  --reader-font-size: 16px;
+  --reader-font-family: var(--font-sans);
+  --content-max-width: 800px;
 }
 
 /* 亮色主题 (默认 - Claude 暖米白浅色风格) */

@@ -15,6 +15,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // 读取文件
     readFile: (filePath) => ipcRenderer.invoke('read-file', filePath),
 
+    // 同步当前窗口关联文件路径（拖拽/新建）
+    setCurrentFile: (filePath) => ipcRenderer.invoke('set-current-file', filePath),
+
     // 重命名文件
     renameFile: (oldPath, newName) => ipcRenderer.invoke('rename-file', { oldPath, newName }),
 
@@ -63,8 +66,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // 打开外部链接
     openExternal: (url) => ipcRenderer.invoke('open-external', url),
 
-    // 检查更新
+    // 检查更新与版本
     checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
+    getAppVersion: () => ipcRenderer.invoke('get-app-version'),
+
+    // 外部文件变动监听（Live Reload）
+    onFileExternallyChanged: (callback) => {
+        ipcRenderer.on('file-externally-changed', (_event, data) => callback(data));
+    },
 
     // 主题管理
     getTheme: () => ipcRenderer.invoke('get-theme'),
