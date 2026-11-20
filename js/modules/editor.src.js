@@ -20,28 +20,28 @@ const mditorTheme = EditorView.theme({
         fontFamily: '"Noto Serif SC", Georgia, serif',
         lineHeight: '1.8',
         padding: '2rem 0',
-        caretColor: 'var(--color-primary)'
+        caretColor: 'var(--color-accent)'
     },
     '.cm-line': {
         padding: '0 2rem'
     },
     '.cm-cursor': {
         borderLeftWidth: '2px',
-        borderLeftColor: 'var(--color-primary)'
+        borderLeftColor: 'var(--color-accent)'
     },
     '.cm-selectionBackground': {
-        backgroundColor: 'var(--color-primary-light, rgba(102, 126, 234, 0.2)) !important'
+        backgroundColor: 'var(--color-primary-light, rgba(217, 119, 87, 0.20)) !important'
     },
     '&.cm-focused .cm-selectionBackground': {
-        backgroundColor: 'var(--color-primary-light, rgba(102, 126, 234, 0.3)) !important'
+        backgroundColor: 'var(--color-primary-light, rgba(217, 119, 87, 0.26)) !important'
     },
     '.cm-activeLine': {
-        backgroundColor: 'var(--color-bg-elevated, rgba(0,0,0,0.02))'
+        backgroundColor: 'var(--bg-elevated, rgba(61, 57, 41, 0.035))'
     },
     '.cm-gutters': {
         backgroundColor: 'transparent',
         borderRight: 'none',
-        color: 'var(--color-text-tertiary)',
+        color: 'var(--text-tertiary)',
         fontSize: '12px',
         opacity: '0',
         transition: 'opacity 0.2s ease'
@@ -50,19 +50,19 @@ const mditorTheme = EditorView.theme({
         opacity: '1'
     },
     // Markdown 语法高亮
-    '.cm-header-1': { fontSize: '2rem', fontWeight: '700', color: 'var(--color-text-primary)' },
-    '.cm-header-2': { fontSize: '1.6rem', fontWeight: '600', color: 'var(--color-text-primary)' },
-    '.cm-header-3': { fontSize: '1.3rem', fontWeight: '600', color: 'var(--color-text-primary)' },
-    '.cm-header-4': { fontSize: '1.1rem', fontWeight: '600', color: 'var(--color-text-primary)' },
+    '.cm-header-1': { fontSize: '2rem', fontWeight: '700', color: 'var(--text-primary)' },
+    '.cm-header-2': { fontSize: '1.6rem', fontWeight: '600', color: 'var(--text-primary)' },
+    '.cm-header-3': { fontSize: '1.3rem', fontWeight: '600', color: 'var(--text-primary)' },
+    '.cm-header-4': { fontSize: '1.1rem', fontWeight: '600', color: 'var(--text-primary)' },
     '.cm-strong': { fontWeight: '700' },
     '.cm-emphasis': { fontStyle: 'italic' },
     '.cm-strikethrough': { textDecoration: 'line-through' },
-    '.cm-link': { color: 'var(--color-primary)', textDecoration: 'underline' },
-    '.cm-url': { color: 'var(--color-text-secondary)', fontFamily: '"JetBrains Mono", monospace', fontSize: '0.9em' },
+    '.cm-link': { color: 'var(--color-accent-hover)', textDecoration: 'underline' },
+    '.cm-url': { color: 'var(--text-secondary)', fontFamily: '"JetBrains Mono", monospace', fontSize: '0.9em' },
     '.cm-monospace': { fontFamily: '"JetBrains Mono", monospace', fontSize: '0.9em' },
     // 幽灵提示样式
     '.cm-placeholder': {
-        color: 'var(--text-tertiary, #b2bec3)',
+        color: 'var(--text-tertiary, #96938A)',
         fontStyle: 'italic'
     }
 }, { dark: false });

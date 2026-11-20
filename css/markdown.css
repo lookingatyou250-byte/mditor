@@ -83,13 +83,14 @@ p {
 
 /* Links */
 a {
-    color: var(--color-accent);
+    color: var(--color-accent-hover);
     text-decoration: none;
     border-bottom: 1px solid transparent;
-    transition: border-color 0.2s;
+    transition: border-color 0.2s, color 0.2s;
 }
 
 a:hover {
+    color: var(--color-accent);
     border-bottom-color: var(--color-accent);
 }
 
@@ -149,7 +150,7 @@ input[type="checkbox"]:checked::after {
 
 /* Blockquotes */
 blockquote {
-    border-left: 4px solid var(--color-accent);
+    border-left: 3px solid var(--color-accent);
     padding: 10px 16px;
     color: var(--text-secondary);
     background-color: var(--bg-sidebar);
@@ -165,6 +166,7 @@ blockquote p:last-child {
 /* Code Blocks */
 pre {
     background-color: var(--bg-code);
+    border: 1px solid var(--color-border);
     border-radius: var(--radius-md);
     padding: 16px;
     margin-bottom: 1.5em;
@@ -173,7 +175,6 @@ pre {
     font-family: var(--font-mono);
     font-size: 14px;
     line-height: 1.5;
-    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.02);
 }
 
 /* Language Badge */
@@ -199,8 +200,9 @@ code {
 p>code,
 li>code,
 td>code {
-    background-color: rgba(27, 31, 35, 0.05);
-    padding: 0.2em 0.4em;
+    background-color: var(--bg-code-inline);
+    border: 1px solid var(--color-border);
+    padding: 0.15em 0.4em;
     border-radius: 4px;
     font-size: 85%;
     color: var(--text-code);
@@ -212,8 +214,8 @@ td>code {
 body[data-theme="dark"] p>code,
 body[data-theme="dark"] li>code,
 body[data-theme="dark"] td>code {
-    background-color: rgba(255, 255, 255, 0.1);
-    color: var(--text-primary);
+    background-color: var(--bg-code-inline);
+    color: var(--text-code);
 }
 
 /* Tables */
@@ -261,8 +263,8 @@ figcaption {
 
 /* Horizontal Rule */
 hr {
-    height: 2px;
-    background-color: var(--bg-hover);
+    height: 1px;
+    background-color: var(--color-border);
     border: none;
     margin: 2.5em 0;
 }

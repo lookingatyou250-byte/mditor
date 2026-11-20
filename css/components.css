@@ -125,8 +125,8 @@
     left: 50%;
     transform: translateX(-50%);
     margin-top: 4px;
-    background: var(--bg-body);
-    border: 1px solid var(--bg-hover);
+    background: var(--bg-card);
+    border: 1px solid var(--color-border);
     border-radius: 8px;
     box-shadow: var(--shadow-float);
     min-width: 180px;
@@ -247,7 +247,7 @@
     transition: width 0.2s ease, opacity 0.2s ease;
     overflow: hidden;
     flex-shrink: 0;
-    border-right: 1px solid var(--bg-hover);
+    border-right: 1px solid var(--color-border);
 }
 
 .sidebar.collapsed {
@@ -261,7 +261,7 @@
     display: flex;
     padding: 8px;
     gap: 4px;
-    border-bottom: 1px solid var(--bg-hover);
+    border-bottom: 1px solid var(--color-border);
 }
 
 .sidebar-tab {
@@ -573,7 +573,7 @@
     font-size: 11px;
     color: var(--text-tertiary);
     flex-shrink: 0;
-    border-top: 1px solid var(--bg-hover);
+    border-top: 1px solid var(--color-border);
 }
 
 .statusbar-left,
@@ -620,10 +620,10 @@
    ---------------------- */
 .slash-menu {
     position: fixed;
-    background: var(--bg-body);
-    border: 1px solid var(--bg-hover);
+    background: var(--bg-card);
+    border: 1px solid var(--color-border);
     border-radius: 8px;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+    box-shadow: var(--shadow-float);
     min-width: 200px;
     max-width: 280px;
     max-height: 300px;
@@ -774,9 +774,9 @@
     justify-content: center;
     gap: 8px;
     padding: 12px 24px;
-    border: 1px solid var(--bg-hover);
+    border: 1px solid var(--color-border);
     border-radius: 8px;
-    background: transparent;
+    background: var(--bg-card);
     color: var(--text-primary);
     font-size: 14px;
     font-weight: 500;
@@ -791,17 +791,18 @@
 
 .welcome-btn:hover {
     background: var(--bg-hover);
-    border-color: var(--bg-active);
+    border-color: var(--color-border);
 }
 
 .welcome-btn.primary {
     background: var(--color-accent);
     border-color: var(--color-accent);
-    color: white;
+    color: #FAF9F5;
 }
 
 .welcome-btn.primary:hover {
-    opacity: 0.9;
+    background: var(--color-accent-hover);
+    border-color: var(--color-accent-hover);
 }
 
 .welcome-hint {
@@ -883,12 +884,12 @@
 
 .settings-content {
     position: relative;
-    background: var(--bg-body);
+    background: var(--bg-card);
     border-radius: 12px;
     width: 360px;
     max-width: calc(100% - 32px);
     box-shadow: var(--shadow-float);
-    border: 1px solid var(--bg-hover);
+    border: 1px solid var(--color-border);
     overflow: hidden;
 }
 
@@ -897,7 +898,7 @@
     align-items: center;
     justify-content: space-between;
     padding: 16px 20px;
-    border-bottom: 1px solid var(--bg-hover);
+    border-bottom: 1px solid var(--color-border);
 }
 
 .settings-header h3 {
@@ -1396,12 +1397,13 @@
 
 .dialog-content {
     position: relative;
-    background: var(--bg-body);
+    background: var(--bg-card);
+    border: 1px solid var(--color-border);
     border-radius: 12px;
     padding: 24px;
     width: 90%;
     max-width: 400px;
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    box-shadow: var(--shadow-float);
     animation: dialogSlideIn 0.2s ease-out;
 }
 
@@ -1455,9 +1457,9 @@
 
 .dialog-btn.primary {
     background: var(--color-accent);
-    color: white;
+    color: #FAF9F5;
 }
 
 .dialog-btn.primary:hover {
-    opacity: 0.9;
+    background: var(--color-accent-hover);
 }

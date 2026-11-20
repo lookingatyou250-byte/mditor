@@ -104,7 +104,7 @@ function createWindow(filePathToOpen = null) {
         frame: false,  // 无边框窗口
         titleBarStyle: 'hidden',
         trafficLightPosition: { x: 12, y: 12 },  // macOS 红绿灯位置
-        backgroundColor: '#1a1a2e',  // 暗色背景防止白闪
+        backgroundColor: globalSettings.theme === 'dark' ? '#262624' : '#FAF9F5',  // 匹配当前主题防止启动闪烁
         webPreferences: {
             nodeIntegration: false,
             contextIsolation: true,

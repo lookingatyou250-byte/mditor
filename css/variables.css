@@ -28,58 +28,71 @@
   --editor-font-size: 16px;
 }
 
-/* 亮色主题 (默认) */
+/* 亮色主题 (默认 - Claude 暖米白浅色风格) */
 :root {
-  /* 基础背景与文字 */
-  --bg-body: #ffffff;
-  --bg-sidebar: #fbfbfb;
-  --bg-hover: rgba(0, 0, 0, 0.04);
-  --bg-active: rgba(0, 0, 0, 0.08);
-  --bg-code: #f3f4f6;
-  --bg-mark: rgba(255, 212, 0, 0.3);
+  /* 基础背景与表面 */
+  --bg-body: #FAF9F5;
+  --bg-sidebar: #F3F1EA;
+  --bg-secondary: #EFECE3;
+  --bg-card: #FDFCFA;
+  --bg-elevated: rgba(61, 57, 41, 0.035);
+  --bg-hover: rgba(61, 57, 41, 0.06);
+  --bg-active: rgba(217, 119, 87, 0.13);
+  --bg-code: #F1EFE7;
+  --bg-code-inline: rgba(138, 126, 108, 0.13);
+  --bg-mark: rgba(217, 119, 87, 0.22);
 
   /* 文字颜色 */
-  --text-primary: #2d3436;
-  --text-secondary: #636e72;
-  --text-tertiary: #b2bec3;
-  --text-code: #24292e;
+  --text-primary: #1F1E1C;
+  --text-secondary: #5E5C56;
+  --text-tertiary: #96938A;
+  --text-code: #3A352E;
 
-  /* 品牌色 & 强调色 */
-  --color-primary: #2d3436;
-  /* Typora 风格偏向黑白 */
-  --color-accent: #0984e3;
-  --color-border: #dfe6e9;
+  /* 品牌色 & 强调色 (Claude 陶土橘) */
+  --color-primary: #1F1E1C;
+  --color-primary-light: rgba(217, 119, 87, 0.20);
+  --color-accent: #D97757;
+  --color-accent-hover: #C6613F;
+  --color-accent-soft: rgba(217, 119, 87, 0.10);
+  --color-border: #E5E2D9;
 
-  /* 阴影 */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
-  --shadow-float: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -2px rgba(0, 0, 0, 0.04);
+  /* 阴影 (暖调轻阴影) */
+  --shadow-sm: 0 1px 2px rgba(31, 30, 28, 0.05);
+  --shadow-md: 0 4px 10px -2px rgba(31, 30, 28, 0.06), 0 2px 4px -1px rgba(31, 30, 28, 0.04);
+  --shadow-float: 0 10px 24px -4px rgba(31, 30, 28, 0.09), 0 4px 8px -2px rgba(31, 30, 28, 0.05);
 }
 
-/* 暗色主题 - 通过 :root 或 body 的 data-theme="dark" 触发 */
+/* 暗色主题 - Claude 暖炭黑风格 */
 :root[data-theme="dark"],
 body[data-theme="dark"] {
-  /* 基础背景与文字 */
-  --bg-body: #1e1e1e;
-  --bg-sidebar: #252526;
-  --bg-hover: rgba(255, 255, 255, 0.06);
-  --bg-active: rgba(255, 255, 255, 0.1);
-  --bg-code: #2d2d2d;
-  --bg-mark: rgba(255, 212, 0, 0.15);
+  /* 基础背景与表面 */
+  --bg-body: #262624;
+  --bg-sidebar: #1F1E1D;
+  --bg-secondary: #30302E;
+  --bg-card: #2B2A28;
+  --bg-elevated: rgba(255, 250, 240, 0.04);
+  --bg-hover: rgba(255, 250, 240, 0.06);
+  --bg-active: rgba(217, 119, 87, 0.18);
+  --bg-code: #1D1C1A;
+  --bg-code-inline: rgba(255, 250, 240, 0.09);
+  --bg-mark: rgba(217, 119, 87, 0.28);
 
   /* 文字颜色 */
-  --text-primary: #d4d4d4;
-  --text-secondary: #a0a0a0;
-  --text-tertiary: #6e6e6e;
-  --text-code: #e1e4e8;
+  --text-primary: #ECEAE3;
+  --text-secondary: #ABA89E;
+  --text-tertiary: #75726A;
+  --text-code: #E5E1D8;
 
   /* 品牌色 & 强调色 */
-  --color-primary: #ffffff;
-  --color-accent: #74b9ff;
-  --color-border: #333333;
+  --color-primary: #FAF9F5;
+  --color-primary-light: rgba(217, 119, 87, 0.26);
+  --color-accent: #DF8263;
+  --color-accent-hover: #E9967A;
+  --color-accent-soft: rgba(223, 130, 99, 0.14);
+  --color-border: #3A3935;
 
   /* 阴影 */
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4);
-  --shadow-float: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
+  --shadow-md: 0 4px 10px -2px rgba(0, 0, 0, 0.4);
+  --shadow-float: 0 10px 24px -4px rgba(0, 0, 0, 0.5);
 }
