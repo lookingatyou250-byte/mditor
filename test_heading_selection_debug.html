@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>标题选择调试测试</title>
+    <style>
+        body {
+            font-family: "Microsoft YaHei", sans-serif;
+            padding: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .test-area {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        .test-content {
+            border: 2px solid #007bff;
+            padding: 20px;
+            min-height: 300px;
+            background: white;
+        }
+        #content {
+            background: #f8f9fa;
+        }
+        h1, h2, h3 {
+            margin: 8px 0;
+            color: #333;
+        }
+        p {
+            margin: 8px 0;
+            line-height: 1.6;
+        }
+        .info-panel {
+            border: 2px solid #28a745;
+            padding: 20px;
+            background: #f8f9fa;
+        }
+        .info-panel h3 {
+            margin-top: 0;
+        }
+        .info-item {
+            margin: 10px 0;
+            padding: 8px;
+            background: white;
+            border-left: 3px solid #007bff;
+            padding-left: 12px;
+        }
+        .info-item strong {
+            color: #007bff;
+        }
+        .status {
+            padding: 4px 8px;
+            border-radius: 3px;
+            font-weight: bold;
+            display: inline-block;
+            margin-left: 8px;
+        }
+        .status.pass {
+            background: #d4edda;
+            color: #155724;
+        }
+        .status.fail {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        .instructions {
+            background: #fff3cd;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            border-left: 4px solid #ffc107;
+        }
+        button {
+            padding: 10px 20px;
+            margin: 5px;
+            font-size: 14px;
+            cursor: pointer;
+            border: none;
+            border-radius: 4px;
+            background: #007bff;
+            color: white;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        .reset-btn {
+            background: #6c757d;
+        }
+        .reset-btn:hover {
+            background: #545b62;
+        }
+    </style>
+</head>
+<body>
+    <h1>📋 标题选择调试测试</h1>
+
+    <div class="instructions">
+        <h3>测试步骤：</h3>
+        <ol>
+            <li>在左侧蓝色区域内选中一段包含标题的文本</li>
+            <li>观察右侧实时显示的选区信息</li>
+            <li>检查所有检查项是否都显示"✓ 通过"</li>
+            <li>如果有"✗ 失败"，查看具体失败原因</li>
+        </ol>
+        <p><strong>提示：</strong>这个测试会帮助诊断为什么包含标题的文本无法高亮。</p>
+    </div>
+
+    <div class="test-area">
+        <div>
+            <h2 style="margin-top: 0;">测试内容区域</h2>
+            <div class="test-content" id="content">
+<h2>功能特色</h2>
+<p>无边框窗口 - 沉浸式写作体验</p>
+<p>实时自动保存 - 2秒无操作自动保存</p>
+<p>聚焦模式 - 点击右上角靶心图标，专注当前段落</p>
+<p>暗色主题 - 点击右上角月亮/太阳图标切换</p>
+            </div>
+        </div>
+
+        <div>
+            <h2 style="margin-top: 0;">选区信息</h2>
+            <div class="info-panel" id="info">
+                <p style="color: #666; font-style: italic;">请在左侧选中文本...</p>
+            </div>
+        </div>
+    </div>
+
+    <div style="margin: 20px 0;">
+        <button onclick="runDiagnostics()">🔍 运行完整诊断</button>
+        <button onclick="testHighlight()" style="background: #28a745;">🎨 测试应用高亮</button>
+        <button onclick="reset()" class="reset-btn">🔄 重置</button>
+    </div>
+
+    <div id="diagnostics" style="margin-top: 20px; padding: 20px; background: #f8f9fa; border-radius: 5px; display: none;">
+        <h3>诊断结果</h3>
+        <div id="diagnosticsContent"></div>
+    </div>
+
+    <script>
+        const contentArea = document.getElementById('content');
+        const infoPanel = document.getElementById('info');
+        let currentRange = null;
+
+        function updateSelectionInfo() {
+            const selection = window.getSelection();
+            if (!selection || selection.rangeCount === 0) {
+                infoPanel.innerHTML = '<p style="color: #666; font-style: italic;">没有选中文本</p>';
+                currentRange = null;
+                return;
+            }
+
+            const range = selection.getRangeAt(0);
+            if (range.collapsed) {
+                infoPanel.innerHTML = '<p style="color: #666; font-style: italic;">选区为空</p>';
+                currentRange = null;
+                return;
+            }
+
+            currentRange = range.cloneRange();
+
+            const selectedText = range.toString();
+            const startContainer = range.startContainer;
+            const endContainer = range.endContainer;
+            const commonAncestor = range.commonAncestorContainer;
+
+            // 执行检查
+            const checks = {
+                hasText: selectedText.trim().length > 0,
+                startInContent: contentArea.contains(startContainer),
+                endInContent: contentArea.contains(endContainer),
+                commonInContent: contentArea.contains(commonAncestor),
+                commonIsContent: commonAncestor === contentArea,
+                canGetRect: range.getBoundingClientRect().width > 0
+            };
+
+            const allPassed = Object.values(checks).every(v => v);
+
+            let html = '<h3>📊 选区信息</h3>';
+
+            html += '<div class="info-item">';
+            html += '<strong>选中文本:</strong><br>';
+            html += `<code>${selectedText.substring(0, 100)}${selectedText.length > 100 ? '...' : ''}</code>`;
+            html += `<br><small>长度: ${selectedText.length} 字符</small>`;
+            html += '</div>';
+
+            html += '<div class="info-item">';
+            html += '<strong>startContainer:</strong> ';
+            html += `${startContainer.nodeName}`;
+            if (startContainer.nodeType === Node.TEXT_NODE) {
+                html += ` (父元素: ${startContainer.parentElement.tagName})`;
+            }
+            html += '</div>';
+
+            html += '<div class="info-item">';
+            html += '<strong>endContainer:</strong> ';
+            html += `${endContainer.nodeName}`;
+            if (endContainer.nodeType === Node.TEXT_NODE) {
+                html += ` (父元素: ${endContainer.parentElement.tagName})`;
+            }
+            html += '</div>';
+
+            html += '<div class="info-item">';
+            html += '<strong>commonAncestorContainer:</strong> ';
+            html += `${commonAncestor.nodeName}`;
+            if (commonAncestor.id) {
+                html += ` #${commonAncestor.id}`;
+            }
+            html += '</div>';
+
+            html += '<h3 style="margin-top: 20px;">✅ 检查项</h3>';
+
+            html += `<div class="info-item">`;
+            html += `<strong>1. 选中了文本:</strong>`;
+            html += `<span class="status ${checks.hasText ? 'pass' : 'fail'}">${checks.hasText ? '✓ 通过' : '✗ 失败'}</span>`;
+            html += `</div>`;
+
+            html += `<div class="info-item">`;
+            html += `<strong>2. 起点在内容区:</strong>`;
+            html += `<span class="status ${checks.startInContent ? 'pass' : 'fail'}">${checks.startInContent ? '✓ 通过' : '✗ 失败'}</span>`;
+            html += `</div>`;
+
+            html += `<div class="info-item">`;
+            html += `<strong>3. 终点在内容区:</strong>`;
+            html += `<span class="status ${checks.endInContent ? 'pass' : 'fail'}">${checks.endInContent ? '✓ 通过' : '✗ 失败'}</span>`;
+            html += `</div>`;
+
+            html += `<div class="info-item">`;
+            html += `<strong>4. 共同祖先在内容区:</strong>`;
+            html += `<span class="status ${checks.commonInContent ? 'pass' : 'fail'}">${checks.commonInContent ? '✓ 通过' : '✗ 失败'}</span>`;
+            html += `</div>`;
+
+            html += `<div class="info-item">`;
+            html += `<strong>5. 共同祖先就是内容区:</strong>`;
+            html += `<span class="status ${checks.commonIsContent ? 'pass' : 'fail'}">${checks.commonIsContent ? '✓ 是' : '✗ 否'}</span>`;
+            html += `<br><small>当选择跨越标题和段落时，这个应该是"✓ 是"</small>`;
+            html += `</div>`;
+
+            html += `<div class="info-item">`;
+            html += `<strong>6. 可以获取位置信息:</strong>`;
+            html += `<span class="status ${checks.canGetRect ? 'pass' : 'fail'}">${checks.canGetRect ? '✓ 通过' : '✗ 失败'}</span>`;
+            html += `</div>`;
+
+            html += '<div style="margin-top: 20px; padding: 15px; background: ' +
+                    (allPassed ? '#d4edda' : '#f8d7da') + '; border-radius: 5px;">';
+            html += '<strong style="font-size: 16px;">';
+            html += allPassed ? '✅ 所有检查通过！应该可以高亮。' : '❌ 有检查失败，可能无法高亮。';
+            html += '</strong>';
+            html += '</div>';
+
+            infoPanel.innerHTML = html;
+        }
+
+        function runDiagnostics() {
+            if (!currentRange) {
+                alert('请先选中文本');
+                return;
+            }
+
+            const diagnosticsDiv = document.getElementById('diagnostics');
+            const diagnosticsContent = document.getElementById('diagnosticsContent');
+
+            let html = '';
+
+            // 测试 contains 方法
+            html += '<h4>🔬 contains() 方法测试</h4>';
+            html += '<div class="info-item">';
+            html += `contentArea.contains(contentArea): <strong>${contentArea.contains(contentArea)}</strong>`;
+            html += '<br><small>应该是 true（元素包含自身）</small>';
+            html += '</div>';
+
+            html += '<div class="info-item">';
+            html += `contentArea.contains(range.commonAncestorContainer): <strong>${contentArea.contains(currentRange.commonAncestorContainer)}</strong>`;
+            html += '</div>';
+
+            // 测试 textContent
+            html += '<h4>📝 textContent 测试</h4>';
+            const selectedText = currentRange.toString();
+            const fullText = contentArea.textContent;
+            const textFound = fullText.indexOf(selectedText) !== -1;
+
+            html += '<div class="info-item">';
+            html += `选中文本长度: <strong>${selectedText.length}</strong><br>`;
+            html += `内容区文本长度: <strong>${fullText.length}</strong><br>`;
+            html += `能否在内容区找到选中文本: <strong class="status ${textFound ? 'pass' : 'fail'}">${textFound ? '✓ 是' : '✗ 否'}</strong>`;
+            if (!textFound) {
+                html += '<br><br><strong style="color: #721c24;">这是问题所在！选中的文本无法在内容区的 textContent 中找到。</strong>';
+                html += '<br>可能的原因：';
+                html += '<ul>';
+                html += '<li>选中文本包含不可见字符</li>';
+                html += '<li>文本中的空格/换行符在 DOM 中表示不同</li>';
+                html += '<li>选中了内容区之外的文本</li>';
+                html += '</ul>';
+            }
+            html += '</div>';
+
+            // 显示文本对比
+            if (!textFound) {
+                html += '<h4>🔍 文本对比</h4>';
+                html += '<div class="info-item">';
+                html += '<strong>选中文本（前100字符）:</strong><br>';
+                html += `<code>${escapeHtml(selectedText.substring(0, 100))}</code><br><br>`;
+                html += '<strong>内容区文本（前200字符）:</strong><br>';
+                html += `<code>${escapeHtml(fullText.substring(0, 200))}</code>`;
+                html += '</div>';
+            }
+
+            diagnosticsContent.innerHTML = html;
+            diagnosticsDiv.style.display = 'block';
+        }
+
+        function testHighlight() {
+            if (!currentRange) {
+                alert('请先选中文本');
+                return;
+            }
+
+            // 简化版高亮测试
+            try {
+                const mark = document.createElement('mark');
+                mark.style.backgroundColor = 'rgba(251, 191, 36, 0.3)';
+                mark.style.padding = '2px 0';
+
+                const testRange = currentRange.cloneRange();
+
+                try {
+                    testRange.surroundContents(mark);
+                    alert('✅ 高亮应用成功！(使用 surroundContents)');
+                } catch (e) {
+                    console.log('surroundContents 失败，尝试 extractContents:', e.message);
+                    try {
+                        const fragment = testRange.extractContents();
+                        mark.appendChild(fragment);
+                        testRange.insertNode(mark);
+                        alert('✅ 高亮应用成功！(使用 extractContents)');
+                    } catch (e2) {
+                        alert('❌ 高亮应用失败：' + e2.message);
+                    }
+                }
+
+                window.getSelection()?.removeAllRanges();
+                currentRange = null;
+            } catch (error) {
+                alert('❌ 测试失败：' + error.message);
+                console.error(error);
+            }
+        }
+
+        function reset() {
+            contentArea.innerHTML = `<h2>功能特色</h2>
+<p>无边框窗口 - 沉浸式写作体验</p>
+<p>实时自动保存 - 2秒无操作自动保存</p>
+<p>聚焦模式 - 点击右上角靶心图标，专注当前段落</p>
+<p>暗色主题 - 点击右上角月亮/太阳图标切换</p>`;
+            infoPanel.innerHTML = '<p style="color: #666; font-style: italic;">请在左侧选中文本...</p>';
+            document.getElementById('diagnostics').style.display = 'none';
+            currentRange = null;
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // 监听选择变化
+        document.addEventListener('selectionchange', updateSelectionInfo);
+        document.addEventListener('mouseup', updateSelectionInfo);
+    </script>
+</body>
+</html>

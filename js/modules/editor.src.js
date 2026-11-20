@@ -9,7 +9,7 @@ import { markdown } from '@codemirror/lang-markdown';
 import { syntaxHighlighting, defaultHighlightStyle, bracketMatching } from '@codemirror/language';
 import { oneDark } from '@codemirror/theme-one-dark';
 
-// 自定义主题配置 - 匹配 mditor 的阅读模式风格
+// 自定义主题配�?- 匹配 mditor 的阅读模式风�?
 const mditorTheme = EditorView.theme({
     '&': {
         fontSize: 'var(--editor-font-size, 16px)',
@@ -106,7 +106,7 @@ class MditorEditor {
             bracketMatching(),
             history(),
 
-            // 快捷键
+            // 快捷�?
             keymap.of([
                 ...defaultKeymap,
                 ...historyKeymap,
@@ -117,11 +117,21 @@ class MditorEditor {
             markdown(),
             syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
 
-            // 自定义主题
+            // 自定义主�?
             mditorTheme,
             this.isDark ? oneDark : [],
 
             // 自动换行
+                        // ͬ����������
+            EditorView.domEventHandlers({
+                scroll: (event, view) => {
+                    const editorHeight = view.scrollDOM.scrollHeight - view.scrollDOM.clientHeight;
+                    if (editorHeight > 0) {
+                        const percentage = view.scrollDOM.scrollTop / editorHeight;
+                        this.eventBus.emit('SYNC_SCROLL', percentage);
+                    }
+                }
+            }),
             EditorView.lineWrapping,
 
             // 幽灵提示（空文档时显示）
@@ -169,7 +179,7 @@ class MditorEditor {
     }
 
     /**
-     * 聚焦编辑器
+     * 聚焦编辑�?
      */
     focus() {
         this.view?.focus();
@@ -179,7 +189,7 @@ class MditorEditor {
      * 切换主题
      */
     setDarkMode(isDark) {
-        // 重新创建编辑器以应用新主题
+        // 重新创建编辑器以应用新主�?
         if (this.view && this.container) {
             const content = this.getValue();
             this.destroy();
@@ -213,7 +223,7 @@ class MditorEditor {
             insertText = `${syntax}${selectedText}${syntax}`;
             cursorOffset = insertText.length;
         } else if (wrap) {
-            // 插入占位符
+            // 插入占位�?
             insertText = `${syntax}文本${syntax}`;
             cursorOffset = syntax.length;
         } else {
@@ -245,3 +255,4 @@ class MditorEditor {
 
 // 导出编辑器类
 window.MditorEditor = MditorEditor;
+

@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test contains()</title>
+</head>
+<body>
+    <div id="parent">
+        <h1>Heading</h1>
+        <p>Paragraph</p>
+    </div>
+    <script>
+        const parent = document.getElementById('parent');
+        console.log('parent.contains(parent):', parent.contains(parent));
+        console.log('parent.contains(h1):', parent.contains(document.querySelector('h1')));
+    </script>
+</body>
+</html>

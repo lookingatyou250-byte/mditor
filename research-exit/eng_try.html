@@ -1,0 +1,79 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<title>PageNotFound</title>
+<style>
+body{
+	margin:0px;
+	padding:0px;
+	font-family:Arial, Helvetica, sans-serif;
+	font-size:12px;
+	background:#fff; 
+	}
+img{
+	margin:0px;
+	padding:0px;
+	border:none;
+	}
+.error{
+	margin:0px auto;
+	padding:100px 0px 0px 0px;
+	*padding:200px 0px 0px 0px;
+	width:910px;
+	background:#FFF;
+	overflow:hidden;
+	height:430px;
+	background:url(http://english.www.gov.cn/r/SysConfig/WebPortal/English.gov.cn/Framework/images/error.jpg) no-repeat;
+	}
+.error-one{
+	margin:110px 0px 0px 0px;
+	padding:0px;
+	text-align:center;
+	font-family:Arial, Helvetica, sans-serif;
+	font-size:16px;
+	font-weight:bold;
+	}
+.error-two{
+	margin:30px 0px 0px 0px;
+	padding:0px;
+	text-align:center;
+	font-family:Arial, Helvetica, sans-serif;
+	font-size:12px;
+	line-height:25px;
+	}
+.error a{
+	margin:0px;
+	padding:0px;
+	text-decoration:none;
+	color:#296298;
+	}
+</style>
+<script language="javascript" type="text/javascript"> 
+var i = 0; 
+var intervalid; 
+intervalid = setInterval("fun()", 10); 
+function fun() { 
+if (i == 0) { 
+window.location.href = "http://english.www.gov.cn/"; 
+clearInterval(intervalid); 
+} 
+i--; 
+} 
+</script> 
+</head>
+
+<body>
+<div class="error">
+  <div class="error-one">
+  Sorry, the page you requested was not found. 
+  </div>
+  
+  <div class="error-two">
+ If you are having trouble accessing information on english.www.gov.cn, please visit our Homepage.<br> Copyright by <a href="http://english.www.gov.cn">english.www.gov.cn</a> All rights reserved.
+
+  </div>
+ </div>
+</body>
+</html>
+

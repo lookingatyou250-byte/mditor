@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>高亮跨越修复测试</title>
+    <style>
+        body {
+            font-family: "Microsoft YaHei", sans-serif;
+            padding: 40px;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        .test-content {
+            font-size: 18px;
+            line-height: 2;
+            border: 1px solid #ccc;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        mark.temp-highlight {
+            padding: 2px 0;
+            border-radius: 2px;
+        }
+        mark[data-highlight-color="yellow"] {
+            background-color: #fff3cd;
+        }
+        mark[data-highlight-color="green"] {
+            background-color: #d4edda;
+        }
+        mark[data-highlight-color="blue"] {
+            background-color: #d1ecf1;
+        }
+        mark[data-highlight-color="pink"] {
+            background-color: #f8d7da;
+        }
+        .instructions {
+            background: #f0f0f0;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        .instructions ol {
+            margin: 10px 0;
+        }
+        .instructions li {
+            margin: 5px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>高亮跨越修复测试</h1>
+
+    <div class="instructions">
+        <h2>测试步骤：</h2>
+        <ol>
+            <li>选中文本 "新建后点击文件名"，按 Ctrl+H 或点击下方按钮，选择<strong>黄色</strong></li>
+            <li>选中文本 "这是最自然的位置"，按 Ctrl+H 或点击下方按钮，选择<strong>绿色</strong></li>
+            <li>选中整句话 "新建后点击文件名即可保存，这是最自然的位置。"，选择<strong>蓝色</strong></li>
+            <li>检查：整句话是否都变成蓝色，没有遗漏任何部分</li>
+        </ol>
+    </div>
+
+    <div class="test-content" id="content">
+        新建后点击文件名即可保存，这是最自然的位置。
+    </div>
+
+    <div style="margin-bottom: 20px;">
+        <button onclick="applyHighlight('yellow')" style="background: #fff3cd; padding: 10px 20px; margin: 5px;">黄色高亮</button>
+        <button onclick="applyHighlight('green')" style="background: #d4edda; padding: 10px 20px; margin: 5px;">绿色高亮</button>
+        <button onclick="applyHighlight('blue')" style="background: #d1ecf1; padding: 10px 20px; margin: 5px;">蓝色高亮</button>
+        <button onclick="applyHighlight('pink')" style="background: #f8d7da; padding: 10px 20px; margin: 5px;">粉色高亮</button>
+        <button onclick="clearAll()" style="background: #fff; padding: 10px 20px; margin: 5px; border: 1px solid #ccc;">清除所有</button>
+    </div>
+
+    <div id="log" style="background: #f9f9f9; padding: 10px; border-radius: 5px; font-family: monospace; font-size: 12px; white-space: pre-wrap;"></div>
+
+    <script>
+        function log(message) {
+            const logEl = document.getElementById('log');
+            logEl.textContent += new Date().toLocaleTimeString() + ': ' + message + '\n';
+        }
+
+        function applyHighlight(color) {
+            const selection = window.getSelection();
+            if (!selection || selection.rangeCount === 0) {
+                log('没有选中文本');
+                return;
+            }
+
+            const range = selection.getRangeAt(0);
+            if (range.collapsed) {
+                log('选区为空');
+                return;
+            }
+
+            const selectedText = range.toString();
+            log('选中文本: "' + selectedText + '"');
+            log('应用颜色: ' + color);
+
+            const contentArea = document.getElementById('content');
+            if (!contentArea.contains(range.commonAncestorContainer)) {
+                log('选区不在内容区域内');
+                return;
+            }
+
+            // 保存选区文本
+            const savedText = range.toString();
+            log('保存的文本: "' + savedText + '"');
+
+            // 找出所有与选区相交的 mark 元素
+            const marksToUnwrap = new Set();
+
+            const findParentMark = (node) => {
+                while (node && node !== contentArea) {
+                    if (node.nodeType === Node.ELEMENT_NODE &&
+                        node.tagName === 'MARK' &&
+                        node.classList.contains('temp-highlight')) {
+                        return node;
+                    }
+                    node = node.parentNode;
+                }
+                return null;
+            };
+
+            const startMark = findParentMark(range.startContainer);
+            const endMark = findParentMark(range.endContainer);
+
+            if (startMark) marksToUnwrap.add(startMark);
+            if (endMark) marksToUnwrap.add(endMark);
+
+            // 检查选区内的所有 mark
+            const treeWalker = document.createTreeWalker(
+                range.commonAncestorContainer.nodeType === Node.ELEMENT_NODE
+                    ? range.commonAncestorContainer
+                    : range.commonAncestorContainer.parentNode,
+                NodeFilter.SHOW_ELEMENT,
+                {
+                    acceptNode: (node) => {
+                        if (node.tagName === 'MARK' && node.classList.contains('temp-highlight')) {
+                            return NodeFilter.FILTER_ACCEPT;
+                        }
+                        return NodeFilter.FILTER_SKIP;
+                    }
+                }
+            );
+
+            let currentNode;
+            while (currentNode = treeWalker.nextNode()) {
+                if (range.intersectsNode(currentNode)) {
+                    marksToUnwrap.add(currentNode);
+                }
+            }
+
+            log('找到 ' + marksToUnwrap.size + ' 个需要展开的 mark');
+
+            // 获取共同祖先
+            let commonParent = range.commonAncestorContainer;
+            if (commonParent.nodeType === Node.TEXT_NODE) {
+                commonParent = commonParent.parentNode;
+            }
+
+            // 展开所有相关的 mark
+            marksToUnwrap.forEach(mark => {
+                const parent = mark.parentNode;
+                if (!parent) return;
+
+                log('展开 mark: ' + mark.textContent.substring(0, 20));
+
+                while (mark.firstChild) {
+                    parent.insertBefore(mark.firstChild, mark);
+                }
+                parent.removeChild(mark);
+            });
+
+            // 合并文本节点
+            commonParent.normalize();
+            log('已合并文本节点');
+
+            // 基于保存的文本内容重新创建选区
+            const findTextRange = (parent, targetText) => {
+                const fullText = parent.textContent;
+                const startIndex = fullText.indexOf(targetText);
+
+                if (startIndex === -1) {
+                    log('错误: 无法找到文本 "' + targetText + '"');
+                    log('父元素文本: "' + fullText + '"');
+                    return null;
+                }
+
+                const endIndex = startIndex + targetText.length;
+                const newRange = document.createRange();
+
+                const walker = document.createTreeWalker(
+                    parent,
+                    NodeFilter.SHOW_TEXT,
+                    null
+                );
+
+                let currentOffset = 0;
+                let startSet = false;
+                let node;
+
+                while (node = walker.nextNode()) {
+                    const nodeLength = node.textContent.length;
+                    const nodeEnd = currentOffset + nodeLength;
+
+                    if (!startSet && currentOffset <= startIndex && startIndex < nodeEnd) {
+                        newRange.setStart(node, startIndex - currentOffset);
+                        startSet = true;
+                        log('设置起点: offset=' + (startIndex - currentOffset));
+                    }
+
+                    if (startSet && currentOffset < endIndex && endIndex <= nodeEnd) {
+                        newRange.setEnd(node, endIndex - currentOffset);
+                        log('设置终点: offset=' + (endIndex - currentOffset));
+                        return newRange;
+                    }
+
+                    currentOffset = nodeEnd;
+                }
+
+                return null;
+            };
+
+            const newRange = findTextRange(commonParent, savedText);
+            if (!newRange) {
+                log('错误: 无法重新创建选区');
+                return;
+            }
+
+            log('成功重新创建选区: "' + newRange.toString() + '"');
+
+            // 创建并应用新高亮
+            const mark = document.createElement('mark');
+            mark.className = 'temp-highlight';
+            mark.dataset.highlightColor = color;
+
+            try {
+                newRange.surroundContents(mark);
+                log('成功应用高亮');
+            } catch (e) {
+                log('使用 extractContents 方法');
+                const fragment = newRange.extractContents();
+                mark.appendChild(fragment);
+                newRange.insertNode(mark);
+                log('成功应用高亮（extract 模式）');
+            }
+
+            // 清除选区
+            window.getSelection()?.removeAllRanges();
+        }
+
+        function clearAll() {
+            const content = document.getElementById('content');
+            content.innerHTML = '新建后点击文件名即可保存,这是最自然的位置。';
+            document.getElementById('log').textContent = '';
+            log('已清除所有高亮');
+        }
+
+        log('测试页面已加载');
+    </script>
+</body>
+</html>
