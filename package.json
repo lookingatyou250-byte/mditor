@@ -33,28 +33,12 @@
     },
     "fileAssociations": [
       {
-        "ext": "md",
-        "name": "Markdown Document",
-        "description": "Markdown 文档",
-        "icon": "build/doc",
-        "role": "Editor"
-      },
-      {
-        "ext": "markdown",
-        "name": "Markdown Document",
-        "description": "Markdown 文档",
-        "icon": "build/doc",
-        "role": "Editor"
-      },
-      {
-        "ext": "mdx",
-        "name": "MDX Document",
-        "description": "MDX 文档",
-        "icon": "build/doc",
-        "role": "Editor"
-      },
-      {
-        "ext": "mkd",
+        "ext": [
+          "md",
+          "markdown",
+          "mdx",
+          "mkd"
+        ],
         "name": "Markdown Document",
         "description": "Markdown 文档",
         "icon": "build/doc",
