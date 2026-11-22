@@ -1,6 +1,9 @@
-const { app, BrowserWindow, Menu, dialog, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, Menu, dialog, ipcMain, shell, clipboard } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
+const { fileURLToPath, pathToFileURL } = require('url');
+const { execFile } = require('child_process');
 
 // ========== 单实例模式 ==========
 const gotTheLock = app.requestSingleInstanceLock();
@@ -10,27 +13,45 @@ if (!gotTheLock) {
     app.exit(0);
 }
 
+/**
+ * 判断命令行参数是否为需要打开的目标文档文件（排除 electron/mditor 可执行文件自身与内部包）
+ */
+function resolveLaunchDocPath(arg, baseDir) {
+    const cleaned = String(arg || '').replace(/^"|"$/g, '').trim();
+    if (!cleaned || cleaned.startsWith('--') || cleaned.startsWith('-')) return null;
+    const lower = cleaned.toLowerCase();
+    if (lower.endsWith('.exe') || lower.endsWith('.asar') || lower.endsWith('main.js')) return null;
+    try {
+        const normalizedPath = baseDir ? path.resolve(baseDir, cleaned) : path.resolve(cleaned);
+        if (normalizedPath === process.execPath) return null;
+        const stat = fs.statSync(normalizedPath);
+        if (stat.isFile()) {
+            return normalizedPath;
+        }
+    } catch {
+        return null;
+    }
+    return null;
+}
+
 // 监听第二个实例的启动（只有获得锁的实例会到达这里）
 app.on('second-instance', (event, commandLine, workingDirectory) => {
     // 从命令行参数中提取文件路径
     const args = commandLine.slice(1);
     let filePath = null;
     for (const arg of args) {
-        const cleaned = arg.replace(/^"|"$/g, '').trim();
-        if (!cleaned || cleaned.startsWith('--') || cleaned.startsWith('-')) continue;
-        try {
-            const normalizedPath = path.normalize(cleaned);
-            const stat = fs.statSync(normalizedPath);
-            if (stat.isFile()) {
-                filePath = normalizedPath;
-                break;
-            }
-        } catch {
-            continue;
+        const resolved = resolveLaunchDocPath(arg, workingDirectory);
+        if (resolved) {
+            filePath = resolved;
+            break;
         }
     }
-    // 创建新窗口
-    createWindow(filePath);
+    // 创建或复用窗口
+    if (filePath) {
+        openFileInApp(filePath);
+    } else {
+        createWindow(null);
+    }
 });
 
 // ========== 多窗口状态管理 ==========
@@ -144,32 +165,68 @@ let globalSettings = loadSettings();
 
 // ========== 捕获启动参数 ==========
 let launchFilePath = null;
-if (process.platform !== 'darwin') {
-    const args = process.argv.slice(1);
+{
+    const args = process.argv.slice(app.isPackaged ? 1 : 2);
     for (const arg of args) {
-        const cleaned = arg.replace(/^"|"$/g, '').trim();
-        // 跳过空参数或命令行选项
-        if (!cleaned || cleaned.startsWith('--') || cleaned.startsWith('-')) continue;
-        try {
-            // 规范化路径
-            const normalizedPath = path.normalize(cleaned);
-            const stat = fs.statSync(normalizedPath);
-            if (stat.isFile()) {
-                launchFilePath = normalizedPath;
-                break;
-            }
-        } catch {
-            // 文件不存在或无法访问，继续检查下一个参数
-            continue;
+        const resolved = resolveLaunchDocPath(arg, process.cwd());
+        if (resolved) {
+            launchFilePath = resolved;
+            break;
         }
     }
+}
+
+/**
+ * 在已有空闲窗口打开文件或创建新窗口
+ */
+function openFileInApp(filePath) {
+    if (!filePath || !fs.existsSync(filePath)) return;
+    const normalized = path.normalize(filePath);
+
+    // 1. 若已有窗口正打开同一文件，直接聚焦该窗口
+    for (const win of BrowserWindow.getAllWindows()) {
+        if (win.isDestroyed()) continue;
+        const state = windowStates.get(win.webContents.id);
+        if (state && state.filePath === normalized) {
+            if (win.isMinimized()) win.restore();
+            win.focus();
+            return;
+        }
+    }
+
+    // 2. 若已有未关联文件的初始窗口（如欢迎/演示页），直接复用该窗口
+    for (const win of BrowserWindow.getAllWindows()) {
+        if (win.isDestroyed()) continue;
+        const state = windowStates.get(win.webContents.id);
+        if (state && !state.filePath && !state.pendingFile) {
+            try {
+                const content = fs.readFileSync(normalized, 'utf-8');
+                state.filePath = normalized;
+                app.addRecentDocument(normalized);
+                watchWindowFile(win, normalized);
+                win.webContents.send('file-opened', {
+                    content,
+                    fileName: path.basename(normalized),
+                    filePath: normalized
+                });
+                if (win.isMinimized()) win.restore();
+                win.focus();
+                return;
+            } catch (e) {
+                console.error('Failed to open file in existing window:', e);
+            }
+        }
+    }
+
+    // 3. 否则创建新窗口
+    createWindow(normalized);
 }
 
 // macOS: open-file 事件
 app.on('open-file', (event, filePath) => {
     event.preventDefault();
     if (app.isReady()) {
-        createWindow(filePath);
+        openFileInApp(filePath);
     } else {
         launchFilePath = filePath;
     }
@@ -178,14 +235,14 @@ app.on('open-file', (event, filePath) => {
 // ========== 窗口创建 ==========
 function createWindow(filePathToOpen = null) {
     const win = new BrowserWindow({
-        width: 1000,
-        height: 700,
+        width: 1060,
+        height: 740,
         minWidth: 600,
         minHeight: 400,
         frame: false,  // 无边框窗口
         titleBarStyle: 'hidden',
-        trafficLightPosition: { x: 12, y: 12 },  // macOS 红绿灯位置
-        backgroundColor: globalSettings.theme === 'dark' ? '#262624' : '#FAF9F5',  // 匹配当前主题防止启动闪烁
+        trafficLightPosition: { x: 14, y: 11 },  // macOS 红绿灯垂直居中于 38px 标题栏
+        backgroundColor: globalSettings.theme === 'dark' ? '#21201C' : '#F4F1EA',  // 匹配 Claude 羊皮纸/暖炭黑背景防止启动闪烁
         webPreferences: {
             nodeIntegration: false,
             contextIsolation: true,
@@ -205,17 +262,22 @@ function createWindow(filePathToOpen = null) {
         lastSelfWriteTime: 0
     });
 
-    // 拦截外部链接，统一用系统默认浏览器打开，防止弹出空白 Electron 窗口
+    // 拦截外部链接与意外导航，防止窗口离开 index.html 导致卡死或唤起系统记事本
     win.webContents.setWindowOpenHandler(({ url }) => {
-        if (url && (url.startsWith('https://') || url.startsWith('http://'))) {
+        if (url && (url.startsWith('https://') || url.startsWith('http://') || url.startsWith('mailto:'))) {
             shell.openExternal(url);
         }
         return { action: 'deny' };
     });
 
     win.webContents.on('will-navigate', (event, url) => {
-        if (url && (url.startsWith('https://') || url.startsWith('http://'))) {
-            event.preventDefault();
+        // 只允许应用自身的 index.html（如刷新），阻止任何其他页面/本地文件导航
+        const indexUrl = pathToFileURL(path.join(__dirname, 'index.html')).href;
+        if (url === indexUrl || url.startsWith(indexUrl + '#') || url.startsWith(indexUrl + '?')) {
+            return;
+        }
+        event.preventDefault();
+        if (url && (url.startsWith('https://') || url.startsWith('http://') || url.startsWith('mailto:'))) {
             shell.openExternal(url);
         }
     });
@@ -229,19 +291,20 @@ function createWindow(filePathToOpen = null) {
     // 保存 ID 用于清理（因为 closed 事件时 webContents 已销毁）
     const webContentsId = win.webContents.id;
 
-    // 窗口即将关闭时询问是否保存高亮或未保存内容
+    // 窗口即将关闭时询问是否保存高亮或未保存内容（若渲染进程未就绪则直接放行，杜绝卡死）
     win.on('close', async (e) => {
-        e.preventDefault();  // 先阻止关闭
+        e.preventDefault();
 
         try {
-            // 询问渲染进程是否可以关闭
-            const canClose = await win.webContents.executeJavaScript('window.app?._handleWindowClose()');
-            if (canClose) {
-                win.destroy();  // 如果允许关闭，直接销毁窗口
+            const canClose = await win.webContents.executeJavaScript(
+                '(window.app && typeof window.app._handleWindowClose === "function") ? window.app._handleWindowClose() : true'
+            );
+            if (canClose !== false) {
+                win.destroy();
             }
         } catch (error) {
             console.error('检查关闭条件失败:', error);
-            win.destroy();  // 出错时直接关闭
+            win.destroy();
         }
     });
 
@@ -251,9 +314,24 @@ function createWindow(filePathToOpen = null) {
         windowStates.delete(webContentsId);
     });
 
+    // 全屏状态变化通知渲染进程（用于 macOS 红绿灯占位内边距调整）
+    win.on('enter-full-screen', () => {
+        if (!win.isDestroyed()) {
+            win.webContents.send('fullscreen-changed', true);
+        }
+    });
+
+    win.on('leave-full-screen', () => {
+        if (!win.isDestroyed()) {
+            win.webContents.send('fullscreen-changed', false);
+        }
+    });
+
     // 隐藏菜单栏（Windows/Linux）
-    win.setMenuBarVisibility(false);
-    win.setAutoHideMenuBar(true);
+    if (process.platform !== 'darwin') {
+        win.setMenuBarVisibility(false);
+        win.setAutoHideMenuBar(true);
+    }
 
     return win;
 }
@@ -313,6 +391,113 @@ ipcMain.handle('open-file-dialog', async (event) => {
         }
     }
     return null;
+});
+
+// 打开文件夹对话框
+ipcMain.handle('open-folder-dialog', async (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    const result = await dialog.showOpenDialog(win, {
+        properties: ['openDirectory']
+    });
+
+    if (!result.canceled && result.filePaths.length > 0) {
+        return { folderPath: result.filePaths[0] };
+    }
+    return null;
+});
+
+// 检查路径类型（用于拖拽文件或文件夹）
+ipcMain.handle('stat-path', async (_event, targetPath) => {
+    try {
+        if (!targetPath || !fs.existsSync(targetPath)) return null;
+        const stat = fs.statSync(targetPath);
+        return {
+            isFile: stat.isFile(),
+            isDirectory: stat.isDirectory(),
+            path: path.normalize(targetPath),
+            name: path.basename(targetPath)
+        };
+    } catch {
+        return null;
+    }
+});
+
+// 递归列出指定目录下的 Markdown 文件（用于 Cmd/Ctrl+P 快速跳转）
+ipcMain.handle('list-markdown-files', async (_event, rootDir) => {
+    if (!rootDir || !fs.existsSync(rootDir)) return [];
+    const validExts = new Set(['.md', '.markdown', '.txt', '.mkd', '.mdx']);
+    const ignoredDirs = new Set(['.git', 'node_modules', 'dist', 'build', '.next', '.cache', '.obsidian', '.claude']);
+    const results = [];
+    const maxFiles = 500;
+    const maxDepth = 4;
+
+    function walk(dir, depth) {
+        if (depth > maxDepth || results.length >= maxFiles) return;
+        let entries;
+        try {
+            entries = fs.readdirSync(dir, { withFileTypes: true });
+        } catch {
+            return;
+        }
+        for (const entry of entries) {
+            if (results.length >= maxFiles) break;
+            if (entry.name.startsWith('.')) continue;
+            const fullPath = path.join(dir, entry.name);
+            if (entry.isDirectory()) {
+                if (!ignoredDirs.has(entry.name)) {
+                    walk(fullPath, depth + 1);
+                }
+            } else if (entry.isFile()) {
+                const ext = path.extname(entry.name).toLowerCase();
+                if (validExts.has(ext)) {
+                    results.push({
+                        name: entry.name,
+                        path: fullPath,
+                        relativePath: path.relative(rootDir, fullPath)
+                    });
+                }
+            }
+        }
+    }
+
+    walk(rootDir, 0);
+    return results;
+});
+
+// 导出当前文档为 PDF
+ipcMain.handle('export-pdf', async (event, defaultName) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (!win || win.isDestroyed()) return { success: false, error: '窗口不可用' };
+
+    const state = windowStates.get(event.sender.id);
+    const baseName = (defaultName || (state?.filePath ? path.basename(state.filePath, path.extname(state.filePath)) : 'document')).replace(/\.[^.]+$/, '');
+    const defaultDir = state?.filePath ? path.dirname(state.filePath) : app.getPath('documents');
+
+    const saveResult = await dialog.showSaveDialog(win, {
+        title: '导出为 PDF',
+        defaultPath: path.join(defaultDir, `${baseName}.pdf`),
+        filters: [{ name: 'PDF 文档', extensions: ['pdf'] }]
+    });
+
+    if (saveResult.canceled || !saveResult.filePath) {
+        return { success: false, canceled: true };
+    }
+
+    try {
+        const pdfBuffer = await win.webContents.printToPDF({
+            printBackground: true,
+            pageSize: 'A4',
+            margins: { top: 0.4, bottom: 0.4, left: 0.4, right: 0.4 }
+        });
+        fs.writeFileSync(saveResult.filePath, pdfBuffer);
+        return {
+            success: true,
+            filePath: saveResult.filePath,
+            fileName: path.basename(saveResult.filePath)
+        };
+    } catch (e) {
+        return { success: false, error: e.message };
+    }
 });
 
 // 保存文件
@@ -388,11 +573,195 @@ ipcMain.on('new-window', () => {
 
 // 打开外部链接
 ipcMain.handle('open-external', async (event, url) => {
-    if (url && (url.startsWith('https://') || url.startsWith('http://'))) {
+    if (url && (url.startsWith('https://') || url.startsWith('http://') || url.startsWith('mailto:'))) {
         await shell.openExternal(url);
         return true;
     }
     return false;
+});
+
+// 解析并打开文档内部的本地链接（.md 链接在 mditor 内直接打开，非 md 文件交由系统打开）
+ipcMain.handle('open-local-link', async (event, { href, baseDir, openInNewWindow }) => {
+    if (!href) return { ok: false, error: '无效链接' };
+
+    const win = BrowserWindow.fromWebContents(event.sender);
+    const state = windowStates.get(event.sender.id);
+    const rawHref = String(href).trim();
+
+    // 分离 #锚点 和 ?查询参数
+    let pathPart = rawHref;
+    let hash = '';
+    const hashIdx = pathPart.indexOf('#');
+    if (hashIdx >= 0) {
+        hash = pathPart.slice(hashIdx + 1);
+        pathPart = pathPart.slice(0, hashIdx);
+    }
+    const queryIdx = pathPart.indexOf('?');
+    if (queryIdx >= 0) {
+        pathPart = pathPart.slice(0, queryIdx);
+    }
+
+    let resolvedPath = null;
+    try {
+        if (/^file:/i.test(pathPart)) {
+            resolvedPath = fileURLToPath(pathPart);
+        } else {
+            let decoded = pathPart;
+            try {
+                decoded = decodeURIComponent(pathPart);
+            } catch {
+                decoded = pathPart;
+            }
+            if (path.isAbsolute(decoded) || /^[a-zA-Z]:[\\/]/.test(decoded)) {
+                resolvedPath = path.normalize(decoded);
+            } else {
+                const anchorDir = baseDir || (state?.filePath ? path.dirname(state.filePath) : null);
+                if (!anchorDir) {
+                    return { ok: false, error: '当前文档尚未保存，无法解析相对路径链接' };
+                }
+                resolvedPath = path.resolve(anchorDir, decoded);
+            }
+        }
+    } catch (e) {
+        return { ok: false, error: `链接路径无效: ${e.message}` };
+    }
+
+    // 如果路径不带扩展名但存在同名 .md 文件，自动补全 .md
+    if (!fs.existsSync(resolvedPath) && fs.existsSync(`${resolvedPath}.md`)) {
+        resolvedPath = `${resolvedPath}.md`;
+    }
+
+    if (!fs.existsSync(resolvedPath)) {
+        return { ok: false, error: `找不到链接目标: ${path.basename(resolvedPath)}` };
+    }
+
+    let stat;
+    try {
+        stat = fs.statSync(resolvedPath);
+    } catch (e) {
+        return { ok: false, error: e.message };
+    }
+
+    if (stat.isDirectory()) {
+        return { ok: true, kind: 'directory', folderPath: resolvedPath };
+    }
+
+    const ext = path.extname(resolvedPath).toLowerCase();
+    const mdExts = new Set(['.md', '.markdown', '.txt', '.mkd', '.mdx']);
+
+    if (mdExts.has(ext)) {
+        if (openInNewWindow) {
+            createWindow(resolvedPath);
+            return { ok: true, kind: 'new-window', filePath: resolvedPath };
+        }
+        try {
+            const content = fs.readFileSync(resolvedPath, 'utf-8');
+            if (state) state.filePath = resolvedPath;
+            app.addRecentDocument(resolvedPath);
+            watchWindowFile(win, resolvedPath);
+            return {
+                ok: true,
+                kind: 'markdown',
+                content,
+                fileName: path.basename(resolvedPath),
+                filePath: resolvedPath,
+                hash: hash ? decodeURIComponent(hash) : ''
+            };
+        } catch (e) {
+            return { ok: false, error: `读取文件失败: ${e.message}` };
+        }
+    }
+
+    // 非 Markdown 文件（如 PDF / 图片 / DOCX 等）交由系统默认应用安全打开
+    const errMsg = await shell.openPath(resolvedPath);
+    if (errMsg) {
+        return { ok: false, error: `无法打开文件: ${errMsg}` };
+    }
+    return { ok: true, kind: 'external-file', filePath: resolvedPath };
+});
+
+// 复制文本到系统剪贴板
+ipcMain.handle('copy-text', async (_event, text) => {
+    try {
+        clipboard.writeText(String(text || ''));
+        return { success: true };
+    } catch (e) {
+        return { success: false, error: e.message };
+    }
+});
+
+// 定位随安装包附带的本机 AI（DSH）桥接插件目录（供新电脑快速配置）
+function resolveDshBridgePluginDir() {
+    const candidates = [
+        path.join(process.resourcesPath || '', 'dsh-plugin'),
+        path.join(__dirname, 'dsh-plugin')
+    ];
+    for (const dir of candidates) {
+        if (dir && fs.existsSync(path.join(dir, 'package.json'))) {
+            return dir;
+        }
+    }
+    return null;
+}
+
+ipcMain.handle('reveal-ai-bridge-plugin', async () => {
+    const dir = resolveDshBridgePluginDir();
+    if (!dir) {
+        return { success: false, error: '未找到内置桥接插件目录' };
+    }
+    shell.showItemInFolder(path.join(dir, 'package.json'));
+    clipboard.writeText(dir);
+    return { success: true, dir };
+});
+
+// 一键发送到本机 AI（默认 DeepSeek Harness：原子投递 + 剪贴板兜底 + 唤起窗口）
+ipcMain.handle('send-to-dsh', async (_event, payload) => {
+    const prompt = String(payload?.prompt || '').trim();
+    if (!prompt) {
+        return { success: false, error: '内容为空' };
+    }
+
+    const filePath = payload?.filePath || null;
+    const cwd = payload?.cwd || (filePath ? path.dirname(filePath) : null);
+    const id = `mditor-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+    try {
+        // 1. 同步写入剪贴板作为可靠兜底
+        clipboard.writeText(prompt);
+
+        // 2. 原子写入 ~/.mditor/dsh-inbox/*.json，由 DSH mditor-bridge 插件即时消费并填入新对话草稿
+        const inboxDir = path.join(os.homedir(), '.mditor', 'dsh-inbox');
+        fs.mkdirSync(inboxDir, { recursive: true });
+        const tmpFile = path.join(inboxDir, `${id}.tmp`);
+        const jsonFile = path.join(inboxDir, `${id}.json`);
+        const data = {
+            id,
+            prompt,
+            filePath,
+            cwd,
+            createdAt: Date.now()
+        };
+        fs.writeFileSync(tmpFile, JSON.stringify(data, null, 2), 'utf-8');
+        fs.renameSync(tmpFile, jsonFile);
+
+        // 3. 通过 dsh://open 唤起本机 DeepSeek Harness 窗口（macOS / Windows 原生支持）
+        let opened = false;
+        try {
+            await shell.openExternal('dsh://open');
+            opened = true;
+        } catch {
+            opened = false;
+        }
+
+        if (!opened && process.platform === 'darwin') {
+            execFile('open', ['-a', 'DeepSeek Harness'], () => {});
+            opened = true;
+        }
+
+        return { success: true, id, opened };
+    } catch (e) {
+        return { success: false, error: e.message };
+    }
 });
 
 // 读取目录结构（用于文件树）
@@ -581,11 +950,185 @@ ipcMain.handle('check-for-updates', async () => {
     }
 });
 
+// ========== 原生菜单配置（macOS 原生菜单栏与系统快捷键支持） ==========
+function sendMenuAction(action) {
+    const win = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0];
+    if (win && !win.isDestroyed()) {
+        win.webContents.send('menu-action', action);
+    }
+}
+
+function setupApplicationMenu() {
+    if (process.platform !== 'darwin') {
+        Menu.setApplicationMenu(null);
+        return;
+    }
+
+    const template = [
+        {
+            label: app.name,
+            submenu: [
+                { role: 'about', label: '关于 mditor' },
+                { type: 'separator' },
+                {
+                    label: '设置...',
+                    accelerator: 'CmdOrCtrl+,',
+                    click: () => sendMenuAction('open-settings')
+                },
+                { type: 'separator' },
+                { role: 'services', label: '服务' },
+                { type: 'separator' },
+                { role: 'hide', label: '隐藏 mditor' },
+                { role: 'hideOthers', label: '隐藏其他' },
+                { role: 'unhide', label: '全部显示' },
+                { type: 'separator' },
+                { role: 'quit', label: '退出 mditor' }
+            ]
+        },
+        {
+            label: '文件',
+            submenu: [
+                {
+                    label: '新建文档',
+                    accelerator: 'CmdOrCtrl+N',
+                    click: () => sendMenuAction('new-file')
+                },
+                {
+                    label: '新建窗口',
+                    accelerator: 'CmdOrCtrl+Shift+N',
+                    click: () => createWindow()
+                },
+                { type: 'separator' },
+                {
+                    label: '打开文件...',
+                    accelerator: 'CmdOrCtrl+O',
+                    click: () => sendMenuAction('open-file')
+                },
+                {
+                    label: '打开文件夹...',
+                    accelerator: 'CmdOrCtrl+Shift+O',
+                    click: () => sendMenuAction('open-folder')
+                },
+                {
+                    label: '快速跳转文件...',
+                    accelerator: 'CmdOrCtrl+P',
+                    click: () => sendMenuAction('quick-open')
+                },
+                { type: 'separator' },
+                {
+                    label: '保存',
+                    accelerator: 'CmdOrCtrl+S',
+                    click: () => sendMenuAction('save')
+                },
+                {
+                    label: '另存为...',
+                    accelerator: 'CmdOrCtrl+Shift+S',
+                    click: () => sendMenuAction('save-as')
+                },
+                {
+                    label: '导出为 PDF...',
+                    accelerator: 'CmdOrCtrl+Alt+E',
+                    click: () => sendMenuAction('export-pdf')
+                },
+                { type: 'separator' },
+                { role: 'close', label: '关闭窗口' }
+            ]
+        },
+        {
+            label: '编辑',
+            submenu: [
+                { role: 'undo', label: '撤销' },
+                { role: 'redo', label: '重做' },
+                { type: 'separator' },
+                { role: 'cut', label: '剪切' },
+                { role: 'copy', label: '复制' },
+                { role: 'paste', label: '粘贴' },
+                { role: 'selectAll', label: '全选' },
+                { type: 'separator' },
+                {
+                    label: '页内查找...',
+                    accelerator: 'CmdOrCtrl+F',
+                    click: () => sendMenuAction('find')
+                },
+                {
+                    label: '高亮选中内容',
+                    accelerator: 'Ctrl+H',
+                    click: () => sendMenuAction('highlight')
+                },
+                {
+                    label: '引用选中文字发给 AI',
+                    accelerator: 'CmdOrCtrl+L',
+                    click: () => sendMenuAction('quote-to-ai')
+                },
+                {
+                    label: '发送暂存引用发给 AI',
+                    accelerator: 'CmdOrCtrl+Shift+L',
+                    click: () => sendMenuAction('send-staged-ai')
+                }
+            ]
+        },
+        {
+            label: '视图',
+            submenu: [
+                {
+                    label: '切换阅读 / 编辑模式',
+                    accelerator: 'CmdOrCtrl+E',
+                    click: () => sendMenuAction('toggle-mode')
+                },
+                {
+                    label: '切换侧边栏',
+                    accelerator: 'CmdOrCtrl+\\',
+                    click: () => sendMenuAction('toggle-sidebar')
+                },
+                {
+                    label: '切换聚焦模式',
+                    accelerator: 'CmdOrCtrl+Shift+F',
+                    click: () => sendMenuAction('toggle-focus')
+                },
+                {
+                    label: '切换亮色 / 暗色主题',
+                    accelerator: 'CmdOrCtrl+Shift+D',
+                    click: () => sendMenuAction('toggle-theme')
+                },
+                { type: 'separator' },
+                {
+                    label: '放大字号',
+                    accelerator: 'CmdOrCtrl+Plus',
+                    click: () => sendMenuAction('zoom-in')
+                },
+                {
+                    label: '缩小字号',
+                    accelerator: 'CmdOrCtrl+-',
+                    click: () => sendMenuAction('zoom-out')
+                },
+                {
+                    label: '实际字号',
+                    accelerator: 'CmdOrCtrl+0',
+                    click: () => sendMenuAction('zoom-reset')
+                },
+                { type: 'separator' },
+                { role: 'togglefullscreen', label: '进入全屏' }
+            ]
+        },
+        {
+            label: '窗口',
+            submenu: [
+                { role: 'minimize', label: '最小化' },
+                { role: 'zoom', label: '缩放' },
+                { type: 'separator' },
+                { role: 'front', label: '前置全部窗口' }
+            ]
+        }
+    ];
+
+    const menu = Menu.buildFromTemplate(template);
+    Menu.setApplicationMenu(menu);
+}
+
 // ========== 应用生命周期 ==========
 // 注意：这些只有在获取到单实例锁时才执行（由于前面的 if (!gotTheLock) 会 quit）
 app.whenReady().then(() => {
-    // 隐藏默认菜单（但保留快捷键功能）
-    Menu.setApplicationMenu(null);
+    setupApplicationMenu();
 
     createWindow(launchFilePath);
 

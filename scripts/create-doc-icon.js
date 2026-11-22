@@ -148,17 +148,21 @@ async function createDocIcon() {
         .toFile(path.join(buildDir, 'doc-1024.png'));
     console.log('✓ doc-1024.png');
 
-    // 生成 ICO
+    // 生成 ICO 和 ICNS
     const iconGen = require('icon-gen');
     await iconGen(path.join(buildDir, 'doc-1024.png'), buildDir, {
         report: false,
         ico: {
             name: 'doc',
             sizes: [16, 24, 32, 48, 64, 128, 256]
+        },
+        icns: {
+            name: 'doc',
+            sizes: [16, 32, 64, 128, 256, 512, 1024]
         }
     });
 
-    console.log('✓ doc.ico (文档图标)');
+    console.log('✓ doc.ico & doc.icns (文档图标)');
     console.log('\n文档图标创建完成！');
 }
 

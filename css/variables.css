@@ -3,10 +3,10 @@
      Design Tokens
      ---------------------- */
 
-  /* 字体系统 */
-  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
-  --font-serif: 'Noto Serif SC', "Merriweather", "Georgia", serif;
-  --font-mono: 'JetBrains Mono', "Fira Code", Consolas, Monaco, 'Andale Mono', monospace;
+  /* 字体系统（离线优先，原生适配 macOS / Windows） */
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Segoe UI", Helvetica, Arial, sans-serif;
+  --font-serif: 'Noto Serif SC', "Songti SC", "STSong", "Merriweather", "Georgia", serif;
+  --font-mono: 'JetBrains Mono', "SF Mono", "Fira Code", Menlo, Monaco, Consolas, 'Andale Mono', monospace;
 
   /* 基础尺寸 */
   --spacing-unit: 8px;
@@ -31,71 +31,71 @@
   --content-max-width: 800px;
 }
 
-/* 亮色主题 (默认 - Claude 暖米白浅色风格) */
+/* 亮色主题 (默认 - Claude 经典羊皮纸 / 燕麦暖色风格) */
 :root {
-  /* 基础背景与表面 */
-  --bg-body: #FAF9F5;
-  --bg-sidebar: #F3F1EA;
-  --bg-secondary: #EFECE3;
-  --bg-card: #FDFCFA;
-  --bg-elevated: rgba(61, 57, 41, 0.035);
-  --bg-hover: rgba(61, 57, 41, 0.06);
-  --bg-active: rgba(217, 119, 87, 0.13);
-  --bg-code: #F1EFE7;
-  --bg-code-inline: rgba(138, 126, 108, 0.13);
-  --bg-mark: rgba(217, 119, 87, 0.22);
+  /* 基础背景与表面 (Anthropic Pampas & Warm Parchment) */
+  --bg-body: #F4F1EA;
+  --bg-sidebar: #EBE6DC;
+  --bg-secondary: #E4DFD3;
+  --bg-card: #FAF8F3;
+  --bg-elevated: rgba(66, 56, 41, 0.045);
+  --bg-hover: rgba(66, 56, 41, 0.068);
+  --bg-active: rgba(201, 100, 66, 0.14);
+  --bg-code: #ECE7DD;
+  --bg-code-inline: rgba(186, 102, 71, 0.11);
+  --bg-mark: rgba(209, 110, 76, 0.23);
 
-  /* 文字颜色 */
-  --text-primary: #1F1E1C;
-  --text-secondary: #5E5C56;
-  --text-tertiary: #96938A;
-  --text-code: #3A352E;
+  /* 文字颜色 (暖深褐墨色，久看不累) */
+  --text-primary: #26231E;
+  --text-secondary: #635D53;
+  --text-tertiary: #8F887C;
+  --text-code: #9A482B;
 
-  /* 品牌色 & 强调色 (Claude 陶土橘) */
-  --color-primary: #1F1E1C;
-  --color-primary-light: rgba(217, 119, 87, 0.20);
-  --color-accent: #D97757;
-  --color-accent-hover: #C6613F;
-  --color-accent-soft: rgba(217, 119, 87, 0.10);
-  --color-border: #E5E2D9;
+  /* 品牌色 & 强调色 (Claude Crail 陶土橘) */
+  --color-primary: #26231E;
+  --color-primary-light: rgba(201, 100, 66, 0.20);
+  --color-accent: #C96442;
+  --color-accent-hover: #B35334;
+  --color-accent-soft: rgba(201, 100, 66, 0.11);
+  --color-border: #DFD9CD;
 
-  /* 阴影 (暖调轻阴影) */
-  --shadow-sm: 0 1px 2px rgba(31, 30, 28, 0.05);
-  --shadow-md: 0 4px 10px -2px rgba(31, 30, 28, 0.06), 0 2px 4px -1px rgba(31, 30, 28, 0.04);
-  --shadow-float: 0 10px 24px -4px rgba(31, 30, 28, 0.09), 0 4px 8px -2px rgba(31, 30, 28, 0.05);
+  /* 阴影 (暖调纸感轻阴影) */
+  --shadow-sm: 0 1px 2px rgba(38, 35, 30, 0.06);
+  --shadow-md: 0 4px 12px -2px rgba(38, 35, 30, 0.07), 0 2px 4px -1px rgba(38, 35, 30, 0.04);
+  --shadow-float: 0 12px 28px -4px rgba(38, 35, 30, 0.11), 0 4px 10px -2px rgba(38, 35, 30, 0.06);
 }
 
-/* 暗色主题 - Claude 暖炭黑风格 */
+/* 暗色主题 - Claude 暖浓缩咖啡 / 焙茶炭黑风格 */
 :root[data-theme="dark"],
 body[data-theme="dark"] {
   /* 基础背景与表面 */
-  --bg-body: #262624;
-  --bg-sidebar: #1F1E1D;
-  --bg-secondary: #30302E;
-  --bg-card: #2B2A28;
-  --bg-elevated: rgba(255, 250, 240, 0.04);
-  --bg-hover: rgba(255, 250, 240, 0.06);
+  --bg-body: #21201C;
+  --bg-sidebar: #1A1916;
+  --bg-secondary: #2A2824;
+  --bg-card: #282622;
+  --bg-elevated: rgba(245, 238, 224, 0.045);
+  --bg-hover: rgba(245, 238, 224, 0.068);
   --bg-active: rgba(217, 119, 87, 0.18);
-  --bg-code: #1D1C1A;
-  --bg-code-inline: rgba(255, 250, 240, 0.09);
+  --bg-code: #181714;
+  --bg-code-inline: rgba(217, 119, 87, 0.14);
   --bg-mark: rgba(217, 119, 87, 0.28);
 
   /* 文字颜色 */
-  --text-primary: #ECEAE3;
-  --text-secondary: #ABA89E;
-  --text-tertiary: #75726A;
-  --text-code: #E5E1D8;
+  --text-primary: #ECE8DF;
+  --text-secondary: #A8A296;
+  --text-tertiary: #757066;
+  --text-code: #E69A7E;
 
   /* 品牌色 & 强调色 */
-  --color-primary: #FAF9F5;
+  --color-primary: #F4F1EA;
   --color-primary-light: rgba(217, 119, 87, 0.26);
-  --color-accent: #DF8263;
-  --color-accent-hover: #E9967A;
-  --color-accent-soft: rgba(223, 130, 99, 0.14);
-  --color-border: #3A3935;
+  --color-accent: #D97757;
+  --color-accent-hover: #E68D6F;
+  --color-accent-soft: rgba(217, 119, 87, 0.14);
+  --color-border: #34322C;
 
   /* 阴影 */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 4px 10px -2px rgba(0, 0, 0, 0.4);
-  --shadow-float: 0 10px 24px -4px rgba(0, 0, 0, 0.5);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.32);
+  --shadow-md: 0 4px 12px -2px rgba(0, 0, 0, 0.42);
+  --shadow-float: 0 12px 28px -4px rgba(0, 0, 0, 0.55);
 }

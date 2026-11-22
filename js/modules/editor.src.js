@@ -9,15 +9,15 @@ import { markdown } from '@codemirror/lang-markdown';
 import { syntaxHighlighting, defaultHighlightStyle, bracketMatching } from '@codemirror/language';
 import { oneDark } from '@codemirror/theme-one-dark';
 
-// 自定义主题配置 - 匹配 mditor 的阅读模式风格
+// 自定义主题配置 - 匹配 mditor 的阅读模式风格（跟随用户无衬线/衬线体设置）
 const mditorTheme = EditorView.theme({
     '&': {
         fontSize: 'var(--editor-font-size, 16px)',
-        fontFamily: '"Noto Serif SC", Georgia, serif',
+        fontFamily: 'var(--reader-font-family, var(--font-sans))',
         backgroundColor: 'transparent'
     },
     '.cm-content': {
-        fontFamily: '"Noto Serif SC", Georgia, serif',
+        fontFamily: 'var(--reader-font-family, var(--font-sans))',
         lineHeight: '1.8',
         padding: '2rem 0',
         caretColor: 'var(--color-accent)'
@@ -67,10 +67,21 @@ const mditorTheme = EditorView.theme({
     }
 }, { dark: false });
 
-// 暗色模式覆盖
+// 暗色模式覆盖 - 保持 Claude 暖炭黑透明画布，避免 oneDark 冷蓝背景违和
 const mditorDarkTheme = EditorView.theme({
+    '&': {
+        color: 'var(--text-primary, #ECE8DF)',
+        backgroundColor: 'transparent'
+    },
+    '.cm-content': {
+        color: 'var(--text-primary, #ECE8DF)',
+        caretColor: 'var(--color-accent, #D97757)'
+    },
     '.cm-activeLine': {
-        backgroundColor: 'rgba(255,255,255,0.05)'
+        backgroundColor: 'var(--bg-elevated, rgba(245, 238, 224, 0.045))'
+    },
+    '.cm-selectionBackground, &.cm-focused .cm-selectionBackground': {
+        backgroundColor: 'var(--color-primary-light, rgba(217, 119, 87, 0.26)) !important'
     }
 }, { dark: true });
 
@@ -110,6 +121,20 @@ class MditorEditor {
 
             // 快捷键
             keymap.of([
+                {
+                    key: 'Mod-b',
+                    run: () => {
+                        this.toggleBold();
+                        return true;
+                    }
+                },
+                {
+                    key: 'Mod-i',
+                    run: () => {
+                        this.toggleItalic();
+                        return true;
+                    }
+                },
                 ...defaultKeymap,
                 ...historyKeymap,
                 indentWithTab
@@ -121,7 +146,7 @@ class MditorEditor {
 
             // 自定义主题
             mditorTheme,
-            this.isDark ? oneDark : [],
+            this.isDark ? [oneDark, mditorDarkTheme] : [],
 
             // 自动换行
             EditorView.lineWrapping,

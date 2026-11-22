@@ -9,11 +9,23 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // 打开文件对话框
     openFileDialog: () => ipcRenderer.invoke('open-file-dialog'),
 
+    // 打开文件夹对话框
+    openFolderDialog: () => ipcRenderer.invoke('open-folder-dialog'),
+
+    // 导出为 PDF
+    exportPdf: (defaultName) => ipcRenderer.invoke('export-pdf', defaultName),
+
     // 保存文件
     saveFile: (content, forceDialog) => ipcRenderer.invoke('save-file', { content, forceDialog }),
 
     // 读取文件
     readFile: (filePath) => ipcRenderer.invoke('read-file', filePath),
+
+    // 检查路径是文件还是文件夹
+    statPath: (targetPath) => ipcRenderer.invoke('stat-path', targetPath),
+
+    // 递归列出目录下的 Markdown 文件（用于 Cmd/Ctrl+P 快速跳转）
+    listMarkdownFiles: (rootDir) => ipcRenderer.invoke('list-markdown-files', rootDir),
 
     // 同步当前窗口关联文件路径（拖拽/新建）
     setCurrentFile: (filePath) => ipcRenderer.invoke('set-current-file', filePath),
@@ -60,11 +72,28 @@ contextBridge.exposeInMainWorld('electronAPI', {
         ipcRenderer.on('request-save-as', () => callback(true));
     },
 
+    // 原生菜单动作与全屏状态变化
+    onMenuAction: (callback) => {
+        ipcRenderer.on('menu-action', (_event, action) => callback(action));
+    },
+
+    onFullscreenChanged: (callback) => {
+        ipcRenderer.on('fullscreen-changed', (_event, isFullscreen) => callback(isFullscreen));
+    },
+
     // 平台检测
     platform: process.platform,
 
     // 打开外部链接
     openExternal: (url) => ipcRenderer.invoke('open-external', url),
+
+    // 解析并打开本地链接（.md 在 mditor 内直接打开）
+    openLocalLink: (payload) => ipcRenderer.invoke('open-local-link', payload),
+
+    // 复制文本 & 一键发送到本机 AI & 定位桥接插件目录
+    copyText: (text) => ipcRenderer.invoke('copy-text', text),
+    sendToDsh: (payload) => ipcRenderer.invoke('send-to-dsh', payload),
+    revealAiBridgePlugin: () => ipcRenderer.invoke('reveal-ai-bridge-plugin'),
 
     // 检查更新与版本
     checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),

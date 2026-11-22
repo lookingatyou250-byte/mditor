@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "mditor bridge",
+    "description": "Receives quoted passages and staged review notes sent from the local mditor Markdown reader, opening a new DeepSeek Harness session with the prompt pre-filled in the draft input box."
+  }
+}

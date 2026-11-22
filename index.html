@@ -5,16 +5,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="Content-Security-Policy"
-    content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https: http: file:; connect-src 'none';">
-  <meta name="description" content="一个优雅的 Markdown 阅读器">
+    content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: https: http: file: blob:; connect-src 'none';">
+  <meta name="description" content="一个优雅的 Markdown 阅读器与编辑器">
   <title>mditor</title>
-
-  <!-- 字体 -->
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link
-    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Noto+Serif+SC:wght@400;500;600;700&display=swap"
-    rel="stylesheet">
 
   <!-- 样式 -->
   <link rel="stylesheet" href="css/variables.css">
@@ -22,8 +15,9 @@
   <link rel="stylesheet" href="css/components.css">
   <link rel="stylesheet" href="css/markdown.css">
 
-  <!-- 代码高亮（完全本地离线） -->
+  <!-- 代码高亮与数学公式（完全本地离线） -->
   <link rel="stylesheet" href="lib/hljs-github.min.css" id="hljs-theme">
+  <link rel="stylesheet" href="lib/katex/katex.min.css">
 
   <!-- 尽早应用主题，避免闪烁 -->
   <script src="js/core/initTheme.js"></script>
@@ -60,17 +54,34 @@
         </div>
         <!-- 文件下拉菜单 -->
         <div id="file-dropdown" class="file-dropdown" style="display: none;">
+          <div class="file-dropdown-item" data-action="open-file">
+            <span>打开文件...</span>
+            <span class="shortcut" data-shortcut="Mod+O">Ctrl+O</span>
+          </div>
+          <div class="file-dropdown-item" data-action="open-folder">
+            <span>打开文件夹...</span>
+            <span class="shortcut" data-shortcut="Mod+Shift+O">Ctrl+Shift+O</span>
+          </div>
+          <div class="file-dropdown-item" data-action="quick-open">
+            <span>快速跳转文件...</span>
+            <span class="shortcut" data-shortcut="Mod+P">Ctrl+P</span>
+          </div>
+          <div class="file-dropdown-divider"></div>
           <div class="file-dropdown-item" data-action="save">
             <span>保存</span>
-            <span class="shortcut">Ctrl+S</span>
+            <span class="shortcut" data-shortcut="Mod+S">Ctrl+S</span>
           </div>
           <div class="file-dropdown-item" data-action="save-as">
             <span>另存为...</span>
-            <span class="shortcut">Ctrl+Shift+S</span>
+            <span class="shortcut" data-shortcut="Mod+Shift+S">Ctrl+Shift+S</span>
+          </div>
+          <div class="file-dropdown-item" data-action="export-pdf">
+            <span>导出为 PDF...</span>
+            <span class="shortcut" data-shortcut="Mod+Alt+E">Ctrl+Alt+E</span>
           </div>
           <div class="file-dropdown-divider"></div>
           <div class="file-dropdown-item" data-action="show-in-folder">
-            <span>在文件夹中显示</span>
+            <span id="show-in-folder-label">在文件夹中显示</span>
           </div>
         </div>
         <!-- 重命名输入框 -->
@@ -154,6 +165,22 @@
           </svg>
         </button>
       </div>
+      <!-- 快速文件跳转面板 (Cmd/Ctrl+P) -->
+      <div id="quick-open-modal" class="quick-open-modal" style="display: none;">
+        <div class="quick-open-backdrop"></div>
+        <div class="quick-open-dialog">
+          <div class="quick-open-header">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+              <circle cx="11" cy="11" r="7" />
+              <line x1="21" y1="21" x2="16.65" y2="16.65" />
+            </svg>
+            <input type="text" id="quick-open-input" class="quick-open-input" placeholder="输入文件名快速跳转..." autocomplete="off">
+            <span class="quick-open-esc">ESC</span>
+          </div>
+          <div id="quick-open-list" class="quick-open-list"></div>
+        </div>
+      </div>
+
       <!-- 侧边栏（三态：隐藏 / 目录 / 文件树） -->
       <aside id="sidebar" class="sidebar" data-mode="outline">
         <!-- 侧边栏标签切换 -->
@@ -236,21 +263,81 @@
       </div>
     </div>
 
-    <!-- 高亮触发图标 -->
+    <!-- 划词浮动胶囊（高亮 + 引用给 AI） -->
     <div id="highlight-trigger" class="highlight-trigger" style="display: none;">
-      <svg viewBox="0 0 24 24" fill="currentColor">
-        <circle cx="12" cy="12" r="6"/>
-      </svg>
+      <button type="button" id="selection-highlight-btn" class="selection-pill-btn selection-highlight-btn" title="高亮标注">
+        <svg viewBox="0 0 24 24" fill="currentColor">
+          <circle cx="12" cy="12" r="6"/>
+        </svg>
+      </button>
+      <span class="selection-pill-divider" aria-hidden="true"></span>
+      <button type="button" id="selection-quote-btn" class="selection-pill-btn selection-quote-btn" title="引用这段话发给 AI (⌘L)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 21c3 0 7-1 7-8V5c0-1.25-.756-2.017-2-2H4c-1.25 0-2 .75-2 1.972V11c0 1.25.75 2 2 2 1 0 1 0 1 1v1c0 1-1 2-2 2s-1 .008-1 1.031V21z"/>
+          <path d="M15 21c3 0 7-1 7-8V5c0-1.25-.757-2.017-2-2h-4c-1.25 0-2 .75-2 1.972V11c0 1.25.75 2 2 2h.75c0 2.25.25 4-2.75 4v3c0 1 0 1 1 1z"/>
+        </svg>
+        <span>引用</span>
+      </button>
     </div>
 
-    <!-- 高亮颜色选择器 -->
+    <!-- 引用给 AI 浮动卡片 -->
+    <div id="ai-quote-popover" class="ai-quote-popover" style="display: none;">
+      <div class="ai-quote-preview">
+        <div class="ai-quote-meta">
+          <span id="ai-quote-location" class="ai-quote-location">引用片段</span>
+          <button type="button" id="ai-quote-close" class="ai-quote-close" title="关闭 (Esc)" aria-label="关闭">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M18 6L6 18M6 6l12 12"/>
+            </svg>
+          </button>
+        </div>
+        <div id="ai-quote-text" class="ai-quote-text"></div>
+      </div>
+      <textarea id="ai-quote-input" class="ai-quote-input" rows="2" placeholder="对这段说点什么？回车直接发给 AI，或点「暂存」攒着一起发..."></textarea>
+      <div class="ai-quote-footer">
+        <button type="button" id="ai-quote-target-toggle" class="ai-quote-target-toggle" title="切换发送目标">
+          <span class="ai-target-dot"></span>
+          <span id="ai-quote-target-label">目标: DSH</span>
+        </button>
+        <div class="ai-quote-actions">
+          <button type="button" id="ai-quote-stage-btn" class="ai-btn secondary" title="先存起来，攒几条一起发 (⌘↵)">暂存</button>
+          <button type="button" id="ai-quote-send-btn" class="ai-btn primary" title="直接发给 AI (↵)">发给 AI</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 右下角待发暂存浮栏（当前文档有暂存引用时才出现） -->
+    <div id="ai-stage-dock" class="ai-stage-dock" style="display: none;">
+      <div id="ai-stage-drawer" class="ai-stage-drawer" style="display: none;">
+        <div class="ai-stage-drawer-header">
+          <span id="ai-stage-drawer-title" class="ai-stage-drawer-title">待发引用</span>
+          <button type="button" id="ai-stage-clear-btn" class="ai-stage-clear-btn">清空</button>
+        </div>
+        <div id="ai-stage-list" class="ai-stage-list"></div>
+      </div>
+      <div id="ai-stage-target-menu" class="ai-stage-target-menu" style="display: none;">
+        <!-- 由 JS 根据已配置的 AI 列表动态渲染 -->
+      </div>
+      <div class="ai-stage-bar">
+        <button type="button" id="ai-stage-toggle" class="ai-stage-toggle" title="查看已暂存的引用">
+          <span class="ai-stage-dot"></span>
+          <span id="ai-stage-count-text">已暂存 0 条</span>
+          <span id="ai-stage-chevron" class="ai-stage-chevron">▴</span>
+        </button>
+        <div class="ai-stage-split">
+          <button type="button" id="ai-stage-send-btn" class="ai-stage-send-btn">发给 AI</button>
+          <button type="button" id="ai-stage-target-btn" class="ai-stage-target-btn" title="选择发送目标" aria-label="选择发送目标">▾</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 高亮颜色选择器（Claude 暖调杂志批注色系） -->
     <div id="highlight-picker" class="highlight-picker" style="display: none;">
-      <!-- 颜色定义与 app.js (line 101-107) 保持一致 -->
-      <div class="highlight-dot" data-color="amber" style="background: rgba(251, 191, 36, 0.35);" title="琥珀"></div>
-      <div class="highlight-dot" data-color="emerald" style="background: rgba(52, 211, 153, 0.30);" title="翡翠"></div>
-      <div class="highlight-dot" data-color="sky" style="background: rgba(56, 189, 248, 0.30);" title="天蓝"></div>
-      <div class="highlight-dot" data-color="rose" style="background: rgba(251, 113, 133, 0.30);" title="玫瑰"></div>
-      <div class="highlight-dot" data-color="violet" style="background: rgba(167, 139, 250, 0.35);" title="紫罗兰"></div>
+      <div class="highlight-dot" data-color="amber" style="background: rgba(212, 148, 72, 0.42);" title="暖琥珀"></div>
+      <div class="highlight-dot" data-color="emerald" style="background: rgba(104, 157, 113, 0.38);" title="鼠尾草绿"></div>
+      <div class="highlight-dot" data-color="sky" style="background: rgba(100, 136, 168, 0.38);" title="岩灰蓝"></div>
+      <div class="highlight-dot" data-color="rose" style="background: rgba(201, 100, 66, 0.38);" title="陶土橘"></div>
+      <div class="highlight-dot" data-color="violet" style="background: rgba(155, 123, 184, 0.38);" title="暖灰紫"></div>
       <div class="highlight-dot highlight-add" data-action="add" title="添加颜色">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M12 5v14M5 12h14"/>
@@ -339,11 +426,19 @@
               <button type="button" class="segment-btn" data-width="wide">宽</button>
             </div>
           </div>
+          <!-- 联动 AI -->
+          <div class="settings-item">
+            <div class="settings-item-header">
+              <span class="settings-item-label">默认联动 AI</span>
+              <span id="ai-provider-name" class="settings-item-value">DSH</span>
+            </div>
+            <button id="reveal-ai-bridge-btn" class="settings-btn">定位内置 AI 桥接插件（新电脑配置用）</button>
+          </div>
           <!-- 检查更新 -->
           <div class="settings-item">
             <div class="settings-item-header">
               <span class="settings-item-label">版本</span>
-              <span id="app-version" class="settings-item-value">v3.0.0</span>
+              <span id="app-version" class="settings-item-value">v3.1.0</span>
             </div>
             <button id="check-update-btn" class="settings-btn">检查更新</button>
           </div>
@@ -393,6 +488,7 @@
   <script src="lib/marked.min.js"></script>
   <script src="lib/highlight.min.js"></script>
   <script src="lib/purify.min.js"></script>
+  <script src="lib/katex/katex.min.js"></script>
 
   <!-- 应用模块 -->
   <script src="js/core/eventBus.js"></script>

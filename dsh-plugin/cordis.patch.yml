@@ -1,0 +1,3 @@
+- insert:
+    - id: mditor-bridge
+      name: '@local/mditor-bridge'

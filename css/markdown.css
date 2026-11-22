@@ -358,6 +358,20 @@ hr {
     animation: flashHighlight 1.5s ease-out;
 }
 
+/* AI / 外部修改热重载后的橘色细竖线提示 */
+.content-area > .ai-updated-block {
+    position: relative;
+    background-color: rgba(201, 100, 66, 0.065);
+    box-shadow: -3px 0 0 0 var(--color-accent);
+    border-radius: 0 4px 4px 0;
+    transition: background-color 0.6s ease, box-shadow 0.6s ease;
+}
+
+.content-area > .ai-updated-block.ai-updated-fading {
+    background-color: transparent;
+    box-shadow: -3px 0 0 0 transparent;
+}
+
 @keyframes flashHighlight {
     0% {
         background-color: var(--bg-mark);
@@ -407,4 +421,262 @@ details[open] summary {
     margin-bottom: 10px;
     border-bottom: 1px solid var(--color-border);
     padding-bottom: 10px;
+}
+
+/* ----------------------
+   KaTeX Math (行内与块级公式)
+   ---------------------- */
+.math-block {
+    margin: 1.4em auto;
+    padding: 14px 18px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    text-align: center;
+    background-color: var(--bg-elevated);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+}
+
+.math-block .katex-display {
+    margin: 0;
+}
+
+.math-inline {
+    padding: 0 2px;
+}
+
+/* ----------------------
+   Mermaid 图表容器
+   ---------------------- */
+.mermaid-block {
+    position: relative;
+    margin: 1.5em auto;
+    background-color: var(--bg-card);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    padding: 16px;
+    overflow: hidden;
+}
+
+.mermaid-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+    min-height: 22px;
+}
+
+.mermaid-label {
+    font-size: 11px;
+    font-family: var(--font-mono);
+    font-weight: 500;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+}
+
+.mermaid-block .code-copy-btn {
+    position: static;
+    opacity: 0;
+}
+
+.mermaid-block:hover .code-copy-btn,
+.mermaid-block .code-copy-btn.copied {
+    opacity: 1;
+}
+
+.mermaid-diagram {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    overflow-x: auto;
+    padding: 8px 0;
+    color: var(--text-tertiary);
+    font-size: 13px;
+}
+
+.mermaid-diagram.rendered {
+    cursor: zoom-in;
+}
+
+.mermaid-diagram svg {
+    max-width: 100%;
+    height: auto;
+}
+
+.mermaid-diagram.render-error {
+    color: #C84B31;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    white-space: pre-wrap;
+    justify-content: flex-start;
+}
+
+/* ----------------------
+   GitHub / Obsidian Callouts
+   ---------------------- */
+.callout {
+    margin-bottom: 1.5em;
+    padding: 12px 16px;
+    border-left: 4px solid var(--color-accent);
+    border-radius: 0 var(--radius-md) var(--radius-md) 0;
+    background-color: var(--bg-sidebar);
+}
+
+.callout-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 600;
+    font-size: 0.96em;
+    margin-bottom: 6px;
+    color: var(--text-primary);
+}
+
+.callout-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    font-size: 11px;
+    font-weight: 700;
+    font-style: normal;
+    background: var(--color-accent-soft);
+    color: var(--color-accent);
+}
+
+.callout-content p:last-child {
+    margin-bottom: 0;
+}
+
+.callout-note {
+    border-left-color: #5B7B9A;
+    background-color: rgba(91, 123, 154, 0.08);
+}
+.callout-note .callout-icon {
+    background: rgba(91, 123, 154, 0.16);
+    color: #5B7B9A;
+}
+
+.callout-tip {
+    border-left-color: #5A8262;
+    background-color: rgba(90, 130, 98, 0.08);
+}
+.callout-tip .callout-icon {
+    background: rgba(90, 130, 98, 0.16);
+    color: #5A8262;
+}
+
+.callout-important {
+    border-left-color: #C96442;
+    background-color: rgba(201, 100, 66, 0.08);
+}
+.callout-important .callout-icon {
+    background: rgba(201, 100, 66, 0.16);
+    color: #C96442;
+}
+
+.callout-warning {
+    border-left-color: #B87D32;
+    background-color: rgba(184, 125, 50, 0.09);
+}
+.callout-warning .callout-icon {
+    background: rgba(184, 125, 50, 0.18);
+    color: #B87D32;
+}
+
+.callout-caution {
+    border-left-color: #B84A39;
+    background-color: rgba(184, 74, 57, 0.09);
+}
+.callout-caution .callout-icon {
+    background: rgba(184, 74, 57, 0.18);
+    color: #B84A39;
+}
+
+/* ----------------------
+   GFM Footnotes (脚注)
+   ---------------------- */
+.footnote-ref a {
+    font-size: 0.8em;
+    font-weight: 600;
+    color: var(--color-accent);
+    padding: 0 2px;
+}
+
+.footnotes {
+    margin-top: 3em;
+    font-size: 0.9em;
+    color: var(--text-secondary);
+}
+
+.footnotes hr {
+    margin: 1.5em 0 1em;
+}
+
+.footnotes-list {
+    padding-left: 1.5em;
+}
+
+.footnote-item {
+    margin-bottom: 0.5em;
+}
+
+.footnote-backref {
+    font-size: 0.9em;
+    margin-left: 4px;
+    color: var(--color-accent);
+}
+
+/* ----------------------
+   Print & PDF Export (@media print)
+   ---------------------- */
+@media print {
+    html,
+    body,
+    .app,
+    .main-container,
+    .content-area {
+        height: auto !important;
+        overflow: visible !important;
+        background: #ffffff !important;
+        color: #1F1E1C !important;
+    }
+
+    .titlebar,
+    .reading-progress,
+    .sidebar,
+    .statusbar,
+    .search-bar,
+    .quick-open-modal,
+    .settings-panel,
+    .code-copy-btn,
+    .highlight-trigger,
+    .highlight-picker,
+    .ai-quote-popover,
+    .ai-stage-dock {
+        display: none !important;
+    }
+
+    .content-area {
+        padding: 0 !important;
+    }
+
+    .content-area > * {
+        max-width: 100% !important;
+        padding-right: 0 !important;
+    }
+
+    pre,
+    blockquote,
+    .callout,
+    .mermaid-block,
+    .math-block,
+    table,
+    figure {
+        break-inside: avoid;
+        page-break-inside: avoid;
+    }
 }

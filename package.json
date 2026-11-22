@@ -1,7 +1,7 @@
 {
   "name": "mditor",
-  "version": "3.0.0",
-  "description": "极简 Markdown 编辑器",
+  "version": "3.1.0",
+  "description": "极简 Markdown 阅读器与编辑器",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
@@ -11,6 +11,7 @@
     "build": "electron-builder",
     "build:win": "npm run prebuild && electron-builder --win",
     "build:mac": "npm run prebuild && electron-builder --mac",
+    "build:mac:arm64": "npm run prebuild && electron-builder --mac zip dir --arm64",
     "build:all": "npm run prebuild && electron-builder --win --mac"
   },
   "author": "Your Name",
@@ -44,13 +45,44 @@
         "description": "Markdown 文档",
         "icon": "build/doc",
         "role": "Editor"
+      },
+      {
+        "ext": "mdx",
+        "name": "MDX Document",
+        "description": "MDX 文档",
+        "icon": "build/doc",
+        "role": "Editor"
+      },
+      {
+        "ext": "mkd",
+        "name": "Markdown Document",
+        "description": "Markdown 文档",
+        "icon": "build/doc",
+        "role": "Editor"
       }
     ],
     "files": [
-      "**/*",
-      "!dist/**",
-      "!scripts/**",
-      "!node_modules/.cache/**"
+      "main.js",
+      "preload.js",
+      "index.html",
+      "package.json",
+      "assets/**/*",
+      "build/doc.ico",
+      "css/**/*",
+      "js/**/*",
+      "!js/modules/editor.src.js",
+      "lib/**/*",
+      "!node_modules/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "build/doc.ico",
+        "to": "app/build/doc.ico"
+      },
+      {
+        "from": "dsh-plugin",
+        "to": "dsh-plugin"
+      }
     ],
     "win": {
       "target": [
@@ -64,13 +96,8 @@
     },
     "mac": {
       "target": [
-        {
-          "target": "dmg",
-          "arch": [
-            "x64",
-            "arm64"
-          ]
-        }
+        "zip",
+        "dmg"
       ],
       "category": "public.app-category.productivity"
     },

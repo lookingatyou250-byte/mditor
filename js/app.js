@@ -41,6 +41,12 @@ class App {
         this.searchMatches = [];
         this.searchIndex = -1;
 
+        // 快速跳转面板状态 (Cmd/Ctrl+P)
+        this.quickOpenVisible = false;
+        this.quickOpenFiles = [];
+        this.quickOpenFiltered = [];
+        this.quickOpenIndex = 0;
+
         // 斜杠命令
         this.slashMenuVisible = false;
         this.slashMenuIndex = 0;
@@ -93,6 +99,9 @@ class App {
                 name: '高级',
                 commands: [
                     { icon: '```', label: '代码块', hint: '```', text: '```\n\n```', cursorOffset: -4 },
+                    { icon: '∑', label: '数学公式', hint: '$$', text: '$$\n\n$$', cursorOffset: -3 },
+                    { icon: '◇', label: '流程图', hint: 'mermaid', text: '```mermaid\ngraph LR\n    A[开始] --> B[处理] --> C[完成]\n```\n', cursorOffset: 0 },
+                    { icon: 'ℹ', label: '提示框', hint: '[!NOTE]', text: '> [!NOTE] 提示\n> ', cursorOffset: 0 },
                     { icon: '📊', label: '表格', hint: '| |', text: '| 列1 | 列2 |\n|---|---|\n| 内容 | 内容 |\n', cursorOffset: 0 },
                     { icon: '🔗', label: '链接', hint: '[]()', text: '[](url)', cursorOffset: -6 },
                     { icon: '🖼', label: '图片', hint: '![]()', text: '![](url)', cursorOffset: -6 },
@@ -104,13 +113,13 @@ class App {
         // 合并为平面列表（用于键盘导航）
         this.slashCommands = this.slashQuickCommands;
 
-        // Bug 4 修复：高亮颜色优化，提升暗色模式下的可视性
+        // 高亮颜色：Claude 暖调杂志批注色系
         this.highlightColors = {
-            amber: 'rgba(251, 191, 36, 0.4)',    // Warm yellow - 提高不透明度
-            emerald: 'rgba(52, 211, 153, 0.35)', // Soft green - 提高不透明度
-            sky: 'rgba(56, 189, 248, 0.35)',     // Light blue - 提高不透明度
-            rose: 'rgba(251, 113, 133, 0.35)',   // Gentle pink - 提高不透明度
-            violet: 'rgba(167, 139, 250, 0.4)'   // Soft purple - 提高不透明度
+            amber: 'rgba(212, 148, 72, 0.36)',    // 暖琥珀
+            emerald: 'rgba(104, 157, 113, 0.34)', // 鼠尾草绿
+            sky: 'rgba(100, 136, 168, 0.34)',     // 岩灰蓝
+            rose: 'rgba(201, 100, 66, 0.34)',     // 陶土橘 (Claude Crail)
+            violet: 'rgba(155, 123, 184, 0.34)'   // 暖灰紫
         };
         this.currentHighlightColor = localStorage.getItem('mditor-highlight-color') || 'amber';
         this.highlightPickerVisible = false;
@@ -118,9 +127,26 @@ class App {
         this.highlightPickerTimer = null;
         this.highlightTriggerTimer = null;
         this._selectionTimeout = null;
+        this._editorSelectionTimeout = null;
         this._currentSelectionRange = null;
         this._lastCreatedMark = null;  // 追踪最近创建的高亮标记
         this._highlightsModified = false;  // 追踪高亮是否被修改
+
+        // AI 引用与暂存发送状态（支持未来扩展多 AI；单 AI 时统一显示「发给 AI」，按文件隔离暂存）
+        this.aiProviders = [
+            { id: 'dsh', name: 'DSH', fullName: 'DeepSeek Harness (DSH)' }
+        ];
+        this.aiTarget = localStorage.getItem('mditor-ai-target') || this.aiProviders[0].id;  // provider id | 'clipboard'
+        this.stagedQuotesByFile = new Map();
+        this.aiQuoteVisible = false;
+        this.aiStageDrawerOpen = false;
+        this._pendingQuoteContext = null;
+        this._aiUpdatedFadeTimer = null;
+
+        // 文档跳转历史栈（支持 ⌘[ / ⌘] 返回上一篇或前进）
+        this._navHistory = [];
+        this._navIndex = -1;
+        this._isNavigatingHistory = false;
 
         // DOM 元素缓存
         this.elements = {};
@@ -140,9 +166,11 @@ class App {
         this._initScrollbar();     // 初始化自定义滚动条
         this._initSettings();      // 初始化设置
         this._initReadingProgress(); // 初始化顶部阅读进度条
-        this._initSearch();        // 初始化页内搜索 (Ctrl+F)
+        this._initSearch();        // 初始化页内搜索 (Cmd/Ctrl+F)
+        this._initQuickOpen();     // 初始化快速文件跳转 (Cmd/Ctrl+P)
+        this._initAiQuoteFlow();   // 初始化划词引用 / 暂存 / 一键发给 DSH
         this._initLightbox();      // 初始化图片灯箱
-        this._initZoomShortcut();  // 初始化 Ctrl+滚轮缩放
+        this._initZoomShortcut();  // 初始化 Cmd/Ctrl+滚轮缩放
         this._initLiveReload();    // 初始化外部文件变更热刷新
         this._loadCustomColors();  // 加载自定义颜色
         this._checkInitialFile();
@@ -158,11 +186,48 @@ class App {
     }
 
     /**
-     * 检测平台
+     * 检测平台并适配 macOS / Windows 快捷键显示与全屏红绿灯布局
      */
     _detectPlatform() {
-        const platform = window.electronAPI?.platform || 'web';
+        const platform = window.electronAPI?.platform || (navigator.platform?.toLowerCase().includes('mac') ? 'darwin' : 'web');
+        this.isMac = platform === 'darwin';
         document.body.classList.add(`platform-${platform}`);
+
+        if (window.electronAPI?.onFullscreenChanged) {
+            window.electronAPI.onFullscreenChanged((isFullscreen) => {
+                document.body.classList.toggle('is-fullscreen', Boolean(isFullscreen));
+            });
+        }
+
+        if (this.isMac) {
+            // 适配 macOS 标题栏提示与下拉菜单快捷键符号
+            const sidebarBtn = document.getElementById('sidebar-toggle');
+            const newFileBtn = document.getElementById('new-file-btn');
+            const modeBtn = document.getElementById('mode-toggle');
+            const settingsBtn = document.getElementById('settings-toggle');
+            const showInFolderLabel = document.getElementById('show-in-folder-label');
+
+            if (sidebarBtn) sidebarBtn.title = '切换侧边栏 (⌘\\)';
+            if (newFileBtn) newFileBtn.title = '新建文档 (⌘N)';
+            if (modeBtn) modeBtn.title = '切换编辑/阅读 (⌘E)';
+            if (settingsBtn) settingsBtn.title = '设置 (⌘,)';
+            if (showInFolderLabel) showInFolderLabel.textContent = '在 Finder 中显示';
+
+            const shortcutMap = {
+                'Mod+O': '⌘O',
+                'Mod+Shift+O': '⇧⌘O',
+                'Mod+P': '⌘P',
+                'Mod+S': '⌘S',
+                'Mod+Shift+S': '⇧⌘S',
+                'Mod+Alt+E': '⌥⌘E'
+            };
+            document.querySelectorAll('[data-shortcut]').forEach(el => {
+                const key = el.getAttribute('data-shortcut');
+                if (shortcutMap[key]) {
+                    el.textContent = shortcutMap[key];
+                }
+            });
+        }
     }
 
     /**
@@ -212,12 +277,35 @@ class App {
             // 斜杠菜单
             slashMenu: document.getElementById('slash-menu'),
 
-            // 高亮选择器
+            // 高亮选择器 & 划词引用给 DSH
             highlightTrigger: document.getElementById('highlight-trigger'),
+            selectionHighlightBtn: document.getElementById('selection-highlight-btn'),
+            selectionQuoteBtn: document.getElementById('selection-quote-btn'),
             highlightPicker: document.getElementById('highlight-picker'),
             colorAddPopup: document.getElementById('color-add-popup'),
             colorInput: document.getElementById('color-input'),
             colorPreview: document.getElementById('color-preview'),
+
+            // AI 引用浮窗与暂存栏
+            aiQuotePopover: document.getElementById('ai-quote-popover'),
+            aiQuoteLocation: document.getElementById('ai-quote-location'),
+            aiQuoteText: document.getElementById('ai-quote-text'),
+            aiQuoteInput: document.getElementById('ai-quote-input'),
+            aiQuoteClose: document.getElementById('ai-quote-close'),
+            aiQuoteTargetToggle: document.getElementById('ai-quote-target-toggle'),
+            aiQuoteTargetLabel: document.getElementById('ai-quote-target-label'),
+            aiQuoteStageBtn: document.getElementById('ai-quote-stage-btn'),
+            aiQuoteSendBtn: document.getElementById('ai-quote-send-btn'),
+            aiStageDock: document.getElementById('ai-stage-dock'),
+            aiStageDrawer: document.getElementById('ai-stage-drawer'),
+            aiStageDrawerTitle: document.getElementById('ai-stage-drawer-title'),
+            aiStageClearBtn: document.getElementById('ai-stage-clear-btn'),
+            aiStageList: document.getElementById('ai-stage-list'),
+            aiStageToggle: document.getElementById('ai-stage-toggle'),
+            aiStageCountText: document.getElementById('ai-stage-count-text'),
+            aiStageSendBtn: document.getElementById('ai-stage-send-btn'),
+            aiStageTargetBtn: document.getElementById('ai-stage-target-btn'),
+            aiStageTargetMenu: document.getElementById('ai-stage-target-menu'),
 
             // 文件菜单
             fileMenuBtn: document.getElementById('file-menu-btn'),
@@ -236,9 +324,11 @@ class App {
             fontFamilySegment: document.getElementById('font-family-segment'),
             contentWidthSegment: document.getElementById('content-width-segment'),
             checkUpdateBtn: document.getElementById('check-update-btn'),
+            revealAiBridgeBtn: document.getElementById('reveal-ai-bridge-btn'),
+            aiProviderName: document.getElementById('ai-provider-name'),
             appVersion: document.getElementById('app-version'),
 
-            // 阅读进度条 & 搜索条 & 图片灯箱
+            // 阅读进度条 & 搜索条 & 快速跳转 & 图片灯箱
             readingProgressBar: document.getElementById('reading-progress-bar'),
             searchBar: document.getElementById('search-bar'),
             searchInput: document.getElementById('search-input'),
@@ -246,6 +336,9 @@ class App {
             searchPrev: document.getElementById('search-prev'),
             searchNext: document.getElementById('search-next'),
             searchClose: document.getElementById('search-close'),
+            quickOpenModal: document.getElementById('quick-open-modal'),
+            quickOpenInput: document.getElementById('quick-open-input'),
+            quickOpenList: document.getElementById('quick-open-list'),
             imageLightbox: document.getElementById('image-lightbox'),
         };
     }
@@ -267,6 +360,7 @@ class App {
         this.eventBus.on(Events.FILE_LOADED, ({ content, fileName, filePath }) => {
             if (filePath) {
                 this.currentFilePath = filePath;
+                this.filetreeRoot = null;
                 window.electronAPI?.setCurrentFile?.(filePath);
             }
             this._onFileLoaded(content, fileName);
@@ -274,6 +368,43 @@ class App {
                 this._loadFileTree();
             }
         });
+
+        // 文件夹拖入或打开事件
+        this.eventBus.on('folder:loaded', async ({ folderPath }) => {
+            if (!folderPath) return;
+            await this._loadFolderAsWorkspace(folderPath);
+        });
+
+        // 阅读模式下点击切换任务列表复选框
+        this.eventBus.on('task:toggled', ({ index, checked }) => {
+            this._toggleTaskInMarkdown(index, checked);
+        });
+
+        // 文档内点击本地链接（.md 在当前 mditor 窗口直接打开，支持 ⌘+点击新窗口打开）
+        this.eventBus.on('link:open-local', ({ href, openInNewWindow }) => {
+            this._handleLocalLinkClick(href, openInNewWindow);
+        });
+
+        // 主进程通过 Finder open-file 推送打开文件
+        if (window.electronAPI?.onFileOpened) {
+            window.electronAPI.onFileOpened(({ content, fileName, filePath }) => {
+                if (filePath) {
+                    this.currentFilePath = filePath;
+                    this.filetreeRoot = null;
+                }
+                this._onFileLoaded(content, fileName);
+                if (filePath) {
+                    this._loadFileTree();
+                }
+            });
+        }
+
+        // 主进程原生菜单栏命令支持 (macOS Menu Bar)
+        if (window.electronAPI?.onMenuAction) {
+            window.electronAPI.onMenuAction((action) => {
+                this._handleMenuAction(action);
+            });
+        }
 
         this.eventBus.on(Events.FILE_ERROR, ({ message }) => {
             this._showToast(message, 'error');
@@ -289,6 +420,75 @@ class App {
         this._bindWindowControls();
         this._bindSidebarTabs();
 
+    }
+
+    /**
+     * 处理 macOS 原生菜单栏触发的动作
+     */
+    _handleMenuAction(action) {
+        switch (action) {
+            case 'new-file':
+                this._newFile();
+                break;
+            case 'open-file':
+                this._openFile();
+                break;
+            case 'open-folder':
+                this._openFolder();
+                break;
+            case 'quick-open':
+                this._openQuickOpen();
+                break;
+            case 'save':
+                this._saveFile(false);
+                break;
+            case 'save-as':
+                this._saveFile(true);
+                break;
+            case 'export-pdf':
+                this._exportPdf();
+                break;
+            case 'find':
+                this._openSearch();
+                break;
+            case 'highlight':
+                this._toggleHighlight();
+                break;
+            case 'quote-to-ai':
+                this._openAiQuoteFromActiveSelection();
+                break;
+            case 'send-staged-ai':
+                this._sendStagedQuotes();
+                break;
+            case 'toggle-mode':
+                this._setMode(this.isEditMode ? 'read' : 'edit');
+                break;
+            case 'toggle-sidebar':
+                this._cycleSidebarMode();
+                break;
+            case 'toggle-focus':
+                this._toggleFocusMode();
+                break;
+            case 'toggle-theme':
+                this._toggleTheme();
+                break;
+            case 'zoom-in':
+                this._adjustFontSize(1);
+                break;
+            case 'zoom-out':
+                this._adjustFontSize(-1);
+                break;
+            case 'zoom-reset':
+                this._resetFontSize();
+                break;
+            case 'open-settings':
+                if (this.settingsVisible) {
+                    this._hideSettings();
+                } else {
+                    this._showSettings();
+                }
+                break;
+        }
     }
 
     /**
@@ -359,12 +559,10 @@ class App {
             }
         });
 
-        // 阅读模式：选中文字自动浮现高亮触发图标
-        this.elements.content?.addEventListener('mouseup', (e) => {
-            // 只在阅读模式下响应
+        // 阅读模式：选中文字自动浮现胶囊（高亮 + 引用给 DSH）
+        this.elements.content?.addEventListener('mouseup', () => {
             if (this.isEditMode) return;
 
-            // 延迟 150ms 检测选区，避免误触
             if (this._selectionTimeout) {
                 clearTimeout(this._selectionTimeout);
             }
@@ -374,35 +572,61 @@ class App {
             }, 150);
         });
 
-        // 点击其他地方时隐藏
+        // 编辑模式：选中文字自动浮现极简「引用」按钮
+        this.elements.editorContainer?.addEventListener('mouseup', () => {
+            if (!this.isEditMode) return;
+
+            if (this._editorSelectionTimeout) {
+                clearTimeout(this._editorSelectionTimeout);
+            }
+
+            this._editorSelectionTimeout = setTimeout(() => {
+                this._handleEditModeSelection();
+            }, 180);
+        });
+
+        // 点击其他地方时隐藏浮层
         document.addEventListener('mousedown', (e) => {
-            // 如果点击的是触发图标、选择器或颜色添加弹窗，不隐藏
             if (e.target.closest('.highlight-trigger') ||
                 e.target.closest('.highlight-picker') ||
-                e.target.closest('.color-add-popup')) {
+                e.target.closest('.color-add-popup') ||
+                e.target.closest('.ai-quote-popover')) {
                 return;
             }
-            // 其他情况隐藏所有
-            if (this.highlightTriggerVisible && !this.isEditMode) {
+            if (this.highlightTriggerVisible) {
                 this._hideHighlightTrigger();
             }
             if (this.highlightPickerVisible && !this.isEditMode) {
                 this._hideHighlightPicker();
             }
+            if (this.aiQuoteVisible) {
+                this._closeAiQuotePopover();
+            }
+            if (this.elements.aiStageTargetMenu &&
+                this.elements.aiStageTargetMenu.style.display !== 'none' &&
+                !e.target.closest('.ai-stage-dock')) {
+                this.elements.aiStageTargetMenu.style.display = 'none';
+            }
         });
 
-        // 高亮触发图标：阻止 mousedown 清除选区
+        // 划词胶囊：阻止 mousedown 清除选区
         this.elements.highlightTrigger?.addEventListener('mousedown', (e) => {
-            e.preventDefault(); // 阻止默认行为，保持选区
+            e.preventDefault();
             e.stopPropagation();
         });
 
-        // 高亮触发图标点击事件
-        this.elements.highlightTrigger?.addEventListener('click', (e) => {
+        // 划词胶囊：点圆点打开高亮选择器
+        this.elements.selectionHighlightBtn?.addEventListener('click', (e) => {
             e.stopPropagation();
-            if (this._currentSelectionRange) {
+            if (!this.isEditMode && this._currentSelectionRange) {
                 this._showHighlightPickerForReadMode(this._currentSelectionRange);
             }
+        });
+
+        // 划词胶囊：点「引用」打开引用给 DSH 浮动卡片
+        this.elements.selectionQuoteBtn?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this._openAiQuoteFromActiveSelection();
         });
     }
 
@@ -453,11 +677,23 @@ class App {
         this._hideFileDropdown();
 
         switch (action) {
+            case 'open-file':
+                this._openFile();
+                break;
+            case 'open-folder':
+                this._openFolder();
+                break;
+            case 'quick-open':
+                this._openQuickOpen();
+                break;
             case 'save':
                 this._saveFile(false);
                 break;
             case 'save-as':
                 this._saveFile(true);
+                break;
+            case 'export-pdf':
+                this._exportPdf();
                 break;
             case 'show-in-folder':
                 if (this.currentFilePath && window.electronAPI?.showInFolder) {
@@ -632,86 +868,223 @@ class App {
     }
 
     /**
-     * 绑定键盘快捷键
+     * 绑定键盘快捷键（完整兼容 macOS ⌘ 与 Windows/Linux Ctrl）
      */
     _bindKeyboardShortcuts() {
         document.addEventListener('keydown', (e) => {
-            // Ctrl+\ 循环侧边栏模式
-            if (e.ctrlKey && e.key === '\\') {
+            const mod = e.metaKey || e.ctrlKey;
+            const keyLower = e.key.toLowerCase();
+
+            // Mod+\ 循环侧边栏模式
+            if (mod && e.key === '\\') {
                 e.preventDefault();
                 this._cycleSidebarMode();
+                return;
             }
 
-            // Ctrl+E 切换模式
-            if (e.ctrlKey && !e.shiftKey && e.key === 'e') {
+            // Mod+Alt+E 导出为 PDF
+            if (mod && e.altKey && keyLower === 'e') {
+                e.preventDefault();
+                this._exportPdf();
+                return;
+            }
+
+            // Mod+E 切换编辑/阅读模式
+            if (mod && !e.shiftKey && !e.altKey && keyLower === 'e') {
                 e.preventDefault();
                 this._setMode(this.isEditMode ? 'read' : 'edit');
+                return;
             }
 
-            // Ctrl+N 新建空白文档
-            if (e.ctrlKey && e.key === 'n') {
+            // Mod+Shift+N 新建窗口
+            if (mod && e.shiftKey && keyLower === 'n') {
+                e.preventDefault();
+                window.electronAPI?.newWindow?.();
+                return;
+            }
+
+            // Mod+N 新建空白文档
+            if (mod && !e.shiftKey && keyLower === 'n') {
                 e.preventDefault();
                 this._newFile();
+                return;
             }
 
-            // Ctrl+O 打开
-            if (e.ctrlKey && e.key === 'o') {
+            // Mod+Shift+O 打开文件夹
+            if (mod && e.shiftKey && keyLower === 'o') {
+                e.preventDefault();
+                this._openFolder();
+                return;
+            }
+
+            // Mod+O 打开文件
+            if (mod && !e.shiftKey && keyLower === 'o') {
                 e.preventDefault();
                 this._openFile();
+                return;
             }
 
-            // Ctrl+S 保存
-            if (e.ctrlKey && !e.shiftKey && e.key === 's') {
+            // Mod+P 快速跳转文件
+            if (mod && !e.shiftKey && keyLower === 'p') {
+                e.preventDefault();
+                this._openQuickOpen();
+                return;
+            }
+
+            // Mod+S 保存
+            if (mod && !e.shiftKey && keyLower === 's') {
                 e.preventDefault();
                 this._saveFile(false);
+                return;
             }
 
-            // Ctrl+Shift+S 另存为
-            if (e.ctrlKey && e.shiftKey && e.key === 'S') {
+            // Mod+Shift+S 另存为
+            if (mod && e.shiftKey && keyLower === 's') {
                 e.preventDefault();
                 this._saveFile(true);
+                return;
             }
 
-            // Ctrl+H 高亮
-            if (e.ctrlKey && !e.shiftKey && e.key === 'h') {
+            // Mod+, 打开/关闭设置
+            if (mod && e.key === ',') {
+                e.preventDefault();
+                if (this.settingsVisible) {
+                    this._hideSettings();
+                } else {
+                    this._showSettings();
+                }
+                return;
+            }
+
+            // Ctrl+H 或 Mod+Shift+M 高亮选中内容
+            if ((e.ctrlKey && !e.shiftKey && keyLower === 'h') || (mod && e.shiftKey && keyLower === 'm')) {
                 e.preventDefault();
                 this._toggleHighlight();
-            }
-
-            // Ctrl+F 页内查找
-            if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'f') {
-                e.preventDefault();
-                this._openSearch();
-            }
-
-            // Ctrl+0 重置字号
-            if ((e.ctrlKey || e.metaKey) && e.key === '0') {
-                e.preventDefault();
-                this.fontSize = 16;
-                this._updateFontSizeUI();
-                this._applyFontSize();
-                this._saveFontSize();
-                this._showToast('字号已重置为 16px', 'info');
-            }
-
-            // Esc 关闭灯箱或搜索条
-            if (e.key === 'Escape') {
-                if (this.elements.imageLightbox && this.elements.imageLightbox.style.display !== 'none') {
-                    this._closeLightbox();
-                } else if (this.searchVisible) {
-                    this._closeSearch();
-                }
+                return;
             }
 
             // Ctrl+Shift+H 保存高亮到本地
-            if (e.ctrlKey && e.shiftKey && e.key === 'H') {
+            if ((e.ctrlKey || e.metaKey) && e.shiftKey && keyLower === 'h') {
                 e.preventDefault();
                 if (!this.isEditMode && this.currentFilePath) {
                     this._saveHighlightsToPersistence();
                     this._showToast('高亮已保存', 'success');
                 }
+                return;
+            }
+
+            // Mod+Shift+F 切换聚焦模式
+            if (mod && e.shiftKey && keyLower === 'f') {
+                e.preventDefault();
+                this._toggleFocusMode();
+                return;
+            }
+
+            // Mod+[ / Alt+Left 返回上一篇文档
+            if ((mod && e.key === '[') || (e.altKey && e.key === 'ArrowLeft')) {
+                if (this._navIndex > 0) {
+                    e.preventDefault();
+                    this._navigateDocumentHistory(-1);
+                    return;
+                }
+            }
+
+            // Mod+] / Alt+Right 前进到下一篇文档
+            if ((mod && e.key === ']') || (e.altKey && e.key === 'ArrowRight')) {
+                if (this._navIndex >= 0 && this._navIndex < this._navHistory.length - 1) {
+                    e.preventDefault();
+                    this._navigateDocumentHistory(1);
+                    return;
+                }
+            }
+
+            // Mod+L 引用选中文字发给 DSH
+            if (mod && !e.shiftKey && keyLower === 'l') {
+                e.preventDefault();
+                this._openAiQuoteFromActiveSelection();
+                return;
+            }
+
+            // Mod+Shift+L 发送全部暂存引用给 DSH
+            if (mod && e.shiftKey && keyLower === 'l') {
+                e.preventDefault();
+                this._sendStagedQuotes();
+                return;
+            }
+
+            // Mod+Shift+D 切换主题
+            if (mod && e.shiftKey && keyLower === 'd') {
+                e.preventDefault();
+                this._toggleTheme();
+                return;
+            }
+
+            // Mod+F 页内查找
+            if (mod && !e.shiftKey && keyLower === 'f') {
+                e.preventDefault();
+                this._openSearch();
+                return;
+            }
+
+            // Mod+= / Mod++ 放大字号
+            if (mod && (e.key === '=' || e.key === '+')) {
+                e.preventDefault();
+                this._adjustFontSize(1);
+                return;
+            }
+
+            // Mod+- 缩小字号
+            if (mod && e.key === '-') {
+                e.preventDefault();
+                this._adjustFontSize(-1);
+                return;
+            }
+
+            // Mod+0 重置字号
+            if (mod && e.key === '0') {
+                e.preventDefault();
+                this._resetFontSize();
+                return;
+            }
+
+            // Esc 关闭灯箱 / 引用弹窗 / 快速跳转 / 搜索条
+            if (e.key === 'Escape') {
+                if (this.elements.imageLightbox && this.elements.imageLightbox.style.display !== 'none') {
+                    this._closeLightbox();
+                } else if (this.aiQuoteVisible) {
+                    this._closeAiQuotePopover();
+                } else if (this.quickOpenVisible) {
+                    this._closeQuickOpen();
+                } else if (this.searchVisible) {
+                    this._closeSearch();
+                }
             }
         });
+    }
+
+    /**
+     * 调整字号步进 (+1 / -1)
+     */
+    _adjustFontSize(delta) {
+        const next = Math.max(12, Math.min(24, this.fontSize + delta));
+        if (next !== this.fontSize) {
+            this.fontSize = next;
+            this._updateFontSizeUI();
+            this._applyFontSize();
+            this._saveFontSize();
+            this._showToast(`字号: ${this.fontSize}px`, 'info');
+        }
+    }
+
+    /**
+     * 重置字号为 16px
+     */
+    _resetFontSize() {
+        this.fontSize = 16;
+        this._updateFontSizeUI();
+        this._applyFontSize();
+        this._saveFontSize();
+        this._showToast('字号已重置为 16px', 'info');
     }
 
     /**
@@ -764,13 +1137,31 @@ class App {
         this._updateSaveIndicator();
         this._updateWordCount(content);
 
+        // 记录文档浏览历史（支持 ⌘[ / ⌘] 后退前进）
+        if (this.currentFilePath && !this._isNavigatingHistory) {
+            const currentEntry = this._navHistory[this._navIndex];
+            if (currentEntry !== this.currentFilePath) {
+                this._navHistory = this._navHistory.slice(0, this._navIndex + 1);
+                this._navHistory.push(this.currentFilePath);
+                if (this._navHistory.length > 50) {
+                    this._navHistory.shift();
+                }
+                this._navIndex = this._navHistory.length - 1;
+            }
+        }
+
         // 设置解析基准目录，确保本地相对路径图片正常显示
         this.parser.setBasePath(this.currentFilePath);
 
-        // 关闭旧的搜索高亮
+        // 关闭旧的搜索高亮与引用弹窗，并切换右下角暂存栏到当前文档
         if (this.searchVisible) {
             this._closeSearch();
         }
+        if (this.aiQuoteVisible) {
+            this._closeAiQuotePopover();
+        }
+        this.aiStageDrawerOpen = false;
+        this._renderStagedQuotesUI();
 
         // 解析并渲染
         const html = this.parser.parse(content);
@@ -807,6 +1198,89 @@ class App {
     }
 
     /**
+     * 处理文档内点击本地链接（.md 在 mditor 内部直接打开，支持 ⌘+点击新窗口，支持 #锚点定位）
+     */
+    async _handleLocalLinkClick(href, openInNewWindow = false) {
+        if (!href) return;
+        if (!window.electronAPI?.openLocalLink) {
+            this._showToast('当前环境不支持打开本地文件链接', 'info');
+            return;
+        }
+
+        // 若有未保存的本地修改且准备在当前窗口跳转，先自动保存已存在文件或提示
+        if (!openInNewWindow && this.hasUnsavedChanges && this.currentFilePath) {
+            await this._saveFile(false);
+        }
+
+        const baseDir = this.currentFilePath
+            ? this.currentFilePath.replace(/\\/g, '/').replace(/\/[^/]+$/, '')
+            : (this.filetreeRoot || null);
+
+        const result = await window.electronAPI.openLocalLink({
+            href,
+            baseDir,
+            openInNewWindow
+        });
+
+        if (!result || !result.ok) {
+            this._showToast(result?.error || '无法打开链接', 'error');
+            return;
+        }
+
+        if (result.kind === 'markdown') {
+            this.currentFilePath = result.filePath;
+            this._onFileLoaded(result.content, result.fileName);
+            this._loadFileTree();
+
+            // 若链接带 #锚点，平滑滚动到目标标题
+            if (result.hash) {
+                requestAnimationFrame(() => {
+                    const targetEl = document.getElementById(result.hash) ||
+                        document.getElementById(`heading-${result.hash.toLowerCase().replace(/[^\w\u4e00-\u9fa5]+/g, '-').replace(/^-+|-+$/g, '')}`);
+                    if (targetEl) {
+                        targetEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        targetEl.classList.add('highlight-flash');
+                        setTimeout(() => targetEl.classList.remove('highlight-flash'), 1500);
+                    }
+                });
+            }
+        } else if (result.kind === 'directory' && result.folderPath) {
+            await this._loadFolderAsWorkspace(result.folderPath);
+        } else if (result.kind === 'new-window') {
+            this._showToast('已在新窗口打开文档', 'info');
+        }
+    }
+
+    /**
+     * 文档浏览历史后退/前进 (⌘[ / ⌘])
+     */
+    async _navigateDocumentHistory(delta) {
+        const nextIndex = this._navIndex + delta;
+        if (nextIndex < 0 || nextIndex >= this._navHistory.length) return;
+        const targetPath = this._navHistory[nextIndex];
+        if (!targetPath || !window.electronAPI?.readFile) return;
+
+        if (this.hasUnsavedChanges && this.currentFilePath) {
+            await this._saveFile(false);
+        }
+
+        const data = await window.electronAPI.readFile(targetPath);
+        if (data && data.content !== undefined) {
+            this._isNavigatingHistory = true;
+            this._navIndex = nextIndex;
+            this.currentFilePath = data.filePath;
+            try {
+                this._onFileLoaded(data.content, data.fileName);
+                this._updateFileTreeHighlight();
+            } finally {
+                this._isNavigatingHistory = false;
+            }
+        } else {
+            this._showToast(`无法返回目标文件: ${data?.error || ''}`, 'error');
+        }
+    }
+
+    /**
      * 打开文件
      */
     async _openFile() {
@@ -814,11 +1288,118 @@ class App {
             const result = await window.electronAPI.openFileDialog();
             if (result && result.content !== undefined) {
                 this.currentFilePath = result.filePath;
+                this.filetreeRoot = null;
                 this._onFileLoaded(result.content, result.fileName);
                 this._loadFileTree();
             }
         } else {
             this.fileHandler.openFilePicker();
+        }
+    }
+
+    /**
+     * 打开文件夹作为工作区
+     */
+    async _openFolder() {
+        if (!window.electronAPI?.openFolderDialog) {
+            this._showToast('打开文件夹功能仅在桌面版可用', 'info');
+            return;
+        }
+        const result = await window.electronAPI.openFolderDialog();
+        if (result && result.folderPath) {
+            await this._loadFolderAsWorkspace(result.folderPath);
+        }
+    }
+
+    /**
+     * 加载指定文件夹到侧边栏文件树，并智能打开 README 或首个 Markdown 文档
+     */
+    async _loadFolderAsWorkspace(folderPath) {
+        this.filetreeRoot = folderPath;
+        this.sidebarMode = 'filetree';
+        this._applySidebarMode();
+        await this._loadFileTree(folderPath);
+
+        if (window.electronAPI?.readDirectory) {
+            const items = await window.electronAPI.readDirectory(folderPath);
+            const mdFiles = items.filter(it => !it.isDirectory && ['.md', '.markdown', '.txt', '.mkd', '.mdx'].includes(it.ext));
+            const preferred = mdFiles.find(it => /^readme\.md$/i.test(it.name)) || mdFiles[0];
+            if (preferred && window.electronAPI?.readFile) {
+                const data = await window.electronAPI.readFile(preferred.path);
+                if (data && data.content !== undefined) {
+                    this.currentFilePath = data.filePath;
+                    this._onFileLoaded(data.content, data.fileName);
+                    this._updateFileTreeHighlight();
+                    return;
+                }
+            }
+        }
+        this._showToast(`已打开目录: ${folderPath.split(/[/\\]/).pop()}`, 'success');
+    }
+
+    /**
+     * 导出当前文档为 PDF
+     */
+    async _exportPdf() {
+        if (!window.electronAPI?.exportPdf) {
+            window.print();
+            return;
+        }
+
+        const wasEditMode = this.isEditMode;
+        if (wasEditMode) {
+            this._setMode('read');
+            await new Promise(r => setTimeout(r, 150));
+        }
+
+        const defaultName = this.elements.fileName?.textContent || 'document';
+        const result = await window.electronAPI.exportPdf(defaultName);
+        if (result?.success) {
+            this._showToast(`已导出 PDF: ${result.fileName}`, 'success');
+        } else if (result?.error) {
+            this._showToast(`导出 PDF 失败: ${result.error}`, 'error');
+        }
+    }
+
+    /**
+     * 阅读模式下点击任务复选框，同步更新 Markdown 原文并自动保存
+     */
+    _toggleTaskInMarkdown(taskIndex, checked) {
+        if (!this.currentContent) return;
+        const lines = this.currentContent.split('\n');
+        let inCodeBlock = false;
+        let currentTask = 0;
+        let modified = false;
+
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            if (line.trim().startsWith('```')) {
+                inCodeBlock = !inCodeBlock;
+                continue;
+            }
+            if (inCodeBlock) continue;
+
+            const taskMatch = line.match(/^(\s*(?:[-*+]|\d+\.)\s+\[)([ xX])(\]\s+.*)$/);
+            if (taskMatch) {
+                if (currentTask === taskIndex) {
+                    lines[i] = `${taskMatch[1]}${checked ? 'x' : ' '}${taskMatch[3]}`;
+                    modified = true;
+                    break;
+                }
+                currentTask++;
+            }
+        }
+
+        if (modified) {
+            this.currentContent = lines.join('\n');
+            if (this.editor) {
+                this.editor.setValue(this.currentContent);
+            }
+            this.hasUnsavedChanges = true;
+            this._updateSaveIndicator();
+            if (this.currentFilePath) {
+                this._scheduleAutoSave();
+            }
         }
     }
 
@@ -850,6 +1431,9 @@ class App {
         this._updateSaveIndicator();
         this._updateWordCount('');
         this._updateReadingProgress();
+        this._closeAiQuotePopover();
+        this.aiStageDrawerOpen = false;
+        this._renderStagedQuotesUI();
     }
 
     /**
@@ -1330,10 +1914,11 @@ class App {
     }
 
     /**
-     * 应用主题
+     * 应用主题（同时同步 html 与 body 的 data-theme，修复暗色切回亮色失效问题）
      */
     _applyTheme() {
         const theme = this.state.get('ui.theme');
+        document.documentElement.dataset.theme = theme;
         document.body.dataset.theme = theme;
 
         // 更新主题图标
@@ -1371,6 +1956,7 @@ class App {
                     if (this.editor) {
                         this.editor.setDarkMode(theme === 'dark');
                     }
+                    this.eventBus.emit(Events.THEME_CHANGED, theme);
                 }
             });
         }
@@ -1385,62 +1971,67 @@ class App {
                 if (this.editor) {
                     this.editor.setDarkMode(theme === 'dark');
                 }
+                this.eventBus.emit(Events.THEME_CHANGED, theme);
             }
         }
     }
 
     /**
-     * 加载演示内容
+     * 加载演示内容（根据 macOS / Windows 自动展示对应快捷键及公式、流程图、提示框与高亮）
      */
     _loadDemo() {
+        const mod = this.isMac ? '⌘' : 'Ctrl+';
+        const shiftMod = this.isMac ? '⇧⌘' : 'Ctrl+Shift+';
+        const altMod = this.isMac ? '⌥⌘' : 'Ctrl+Alt+';
         const demoContent = `# 欢迎使用 mditor
 
-一个极简的 Markdown 编辑器，灵感来自 Typora 和 Obsidian。
+一个极简、原生的本地 Markdown 阅读器与编辑器，灵感来自 Typora 与 Obsidian[^1]。
+
+> [!TIP] 极简阅读 · 一键联动 AI
+> **用鼠标选中任意一段文字**，即可一键高亮，或点「**引用**」（\`${mod}L\`）写下意见——可以**先点「暂存」攒几条一起发**，也可以直接「**发给 AI**」自动带上下文打开新对话，按回车即发。
 
 ---
 
 ## 核心特色
 
-### // 斜杠命令
-编辑时输入 //，所有格式触手可及，无需记忆快捷键。
+### 1. 数学公式与 Mermaid 图表（100% 本地离线渲染）
 
-### 点击文件名
-新建后点击文件名即可保存，这是最自然的位置。
+行内公式如质能方程 $E = mc^2$ 与欧拉恒等式 $e^{i\\pi} + 1 = 0$，以及块级公式：
+
+$$
+\\mathcal{L}_{\\text{Attention}}(Q, K, V) = \\text{softmax}\\left(\\frac{QK^\\top}{\\sqrt{d_k}}\\right)V
+$$
+
+\`\`\`mermaid
+graph LR
+    A[打开 .md 文档] --> B[划词高亮 / 暂存引用]
+    B --> C[一键发给 AI 修改]
+    C --> D[自动刷新 · 橘色边线标出改动]
+\`\`\`
+
+### 2. 交互式任务列表与标记
+
+- [x] 原生适配 Apple Silicon (M 系列) 与 macOS 菜单栏 / 红绿灯布局
+- [x] 支持 ==重点内容高亮==、代码块一键复制、外部修改自动热重载与改动边线提示
+- [ ] 点击左侧复选框，即使在阅读模式下也可直接勾选并自动保存
 
 ---
 
-## 快捷键
+## 快捷键速查
 
 | 快捷键 | 功能 |
 |--------|------|
-| \`Ctrl+N\` | 新建空白文档 |
-| \`Ctrl+O\` | 打开文件 |
-| \`Ctrl+S\` | 保存文件 |
-| \`Ctrl+Shift+S\` | 另存为 |
-| \`Ctrl+E\` | 切换编辑/阅读模式 |
-| \`Ctrl+\\\` | 切换侧边栏（隐藏/目录/文件树） |
+| \`${mod}L\` / \`${shiftMod}L\` | 引用选中文字发给 AI / 发送当前文档全部暂存引用 |
+| \`${mod}O\` / \`${shiftMod}O\` | 打开文件 / 打开文件夹工作区 |
+| \`${mod}P\` | 快速搜索并跳转目录内的 Markdown 文档 |
+| \`${mod}E\` | 无缝切换阅读 / 编辑模式（自动同步滚动位置） |
+| \`${mod}\\\` | 切换侧边栏（隐藏 / 大纲目录 / 文件树） |
+| \`${mod}F\` | 页内关键词查找 |
+| \`${mod}S\` / \`${shiftMod}S\` | 保存文件 / 另存为 |
+| \`${altMod}E\` | 导出当前文档为排版精美的 PDF |
+| \`${mod},\` | 打开排版与字号设置面板 |
 
----
-
-## 功能特色
-
-- **无边框窗口** - 沉浸式写作体验
-- **实时自动保存** - 2秒无操作自动保存
-- **聚焦模式** - 点击右上角靶心图标，专注当前段落
-- **暗色主题** - 点击右上角月亮/太阳图标切换
-
----
-
-## 开始使用
-
-1. 拖拽 \`.md\` 文件到窗口
-2. 或按 \`Ctrl+O\` 打开文件
-3. 双击 md 文件直接打开（需安装版）
-4. 点击左上角 \`+\` 新建文件
-
----
-
-> 享受写作的乐趣。
+[^1]: 所有渲染库（Marked、Highlight.js、DOMPurify、KaTeX、Mermaid）均已内置，无需联网即可流畅运行。
 `;
         this._onFileLoaded(demoContent, '欢迎');
     }
@@ -1449,25 +2040,21 @@ class App {
      * 显示 Toast
      */
     _showToast(message, type = 'info') {
-        // 简单 toast 实现
+        document.querySelectorAll('.toast').forEach(el => el.remove());
+
         const toast = document.createElement('div');
         toast.className = `toast toast-${type}`;
         toast.textContent = message;
-        toast.style.cssText = `
-            position: fixed;
-            bottom: 40px;
-            left: 50%;
-            transform: translateX(-50%);
-            padding: 8px 16px;
-            background: var(--bg-body);
-            border: 1px solid var(--bg-hover);
-            border-radius: 6px;
-            font-size: 13px;
-            z-index: 9999;
-            animation: fadeIn 0.2s;
-        `;
         document.body.appendChild(toast);
-        setTimeout(() => toast.remove(), 2000);
+
+        requestAnimationFrame(() => {
+            toast.classList.add('show');
+        });
+
+        setTimeout(() => {
+            toast.classList.remove('show');
+            setTimeout(() => toast.remove(), 260);
+        }, 2000);
     }
 
     /**
@@ -2695,64 +3282,68 @@ class App {
     }
 
     /**
-     * 显示高亮触发图标
+     * 显示划词浮动胶囊（阅读模式：圆点高亮 + 引用；编辑模式：仅引用）
      */
-    _showHighlightTrigger(range) {
+    _showHighlightTrigger(rangeOrRect, editOnly = false) {
         const trigger = this.elements.highlightTrigger;
         if (!trigger) return;
 
-        // 清除之前的定时器
         if (this.highlightTriggerTimer) {
             clearTimeout(this.highlightTriggerTimer);
         }
 
-        // 获取选区位置（支持跨块级元素选择）
-        let rect = range.getBoundingClientRect();
-
-        // 如果 getBoundingClientRect 返回空矩形，尝试使用 getClientRects
-        if (!rect || (rect.width === 0 && rect.height === 0)) {
-            const rects = range.getClientRects();
-            if (rects && rects.length > 0) {
-                // 使用最后一个矩形（选区末尾）来定位触发图标
-                rect = rects[rects.length - 1];
+        let rect = null;
+        if (rangeOrRect && typeof rangeOrRect.getBoundingClientRect === 'function') {
+            rect = rangeOrRect.getBoundingClientRect();
+            if (!rect || (rect.width === 0 && rect.height === 0)) {
+                const rects = rangeOrRect.getClientRects?.();
+                if (rects && rects.length > 0) {
+                    rect = rects[rects.length - 1];
+                }
             }
+        } else if (rangeOrRect && typeof rangeOrRect.left === 'number') {
+            rect = rangeOrRect;
         }
 
-        if (!rect || (rect.width === 0 && rect.height === 0)) {
+        if (!rect || (rect.width === 0 && rect.height === 0 && rect.top === 0 && rect.left === 0)) {
             return;
         }
 
-        // 定位到选区右上角
+        trigger.classList.toggle('edit-only', Boolean(editOnly));
         trigger.style.display = 'flex';
         trigger.classList.remove('fade-out');
 
+        const pillWidth = trigger.offsetWidth || (editOnly ? 68 : 96);
+        const pillHeight = trigger.offsetHeight || 30;
         const viewportWidth = window.innerWidth;
 
-        // 计算位置
-        let left = rect.right + 4;
-        let top = rect.top + window.scrollY - 12;
+        // 定位到选区上方偏右，避免遮挡文字
+        let left = rect.right - pillWidth / 2;
+        let top = rect.top - pillHeight - 8;
 
-        // 边界检查
-        if (left + 24 > viewportWidth - 10) {
-            left = rect.left - 28; // 放到左侧
+        if (left < 12) left = 12;
+        if (left + pillWidth > viewportWidth - 12) {
+            left = viewportWidth - pillWidth - 12;
         }
-        if (top < 10) {
-            top = rect.bottom + window.scrollY + 4; // 放到下方
+        if (top < 46) {
+            top = rect.bottom + 8;
         }
 
-        trigger.style.left = `${left}px`;
-        trigger.style.top = `${top}px`;
+        trigger.style.left = `${Math.round(left)}px`;
+        trigger.style.top = `${Math.round(top)}px`;
 
-        // 使用当前高亮颜色
+        // 圆点沿用当前高亮颜色
         const colorMap = {
-            'amber': 'rgba(251, 191, 36, 1)',
-            'emerald': 'rgba(52, 211, 153, 1)',
-            'sky': 'rgba(56, 189, 248, 1)',
-            'rose': 'rgba(251, 113, 133, 1)',
-            'violet': 'rgba(167, 139, 250, 1)',
+            'amber': 'rgba(212, 148, 72, 1)',
+            'emerald': 'rgba(104, 157, 113, 1)',
+            'sky': 'rgba(100, 136, 168, 1)',
+            'rose': 'rgba(201, 100, 66, 1)',
+            'violet': 'rgba(155, 123, 184, 1)',
         };
         const color = colorMap[this.currentHighlightColor] || this.highlightColors?.[this.currentHighlightColor] || colorMap['amber'];
-        trigger.style.color = color;
+        if (this.elements.selectionHighlightBtn) {
+            this.elements.selectionHighlightBtn.style.color = color;
+        }
 
         this.highlightTriggerVisible = true;
     }
@@ -2881,13 +3472,12 @@ class App {
      * 应用高亮颜色样式（Bug 4 修复：暗色模式优化）
      */
     _applyHighlightColor(element, colorName) {
-        // Bug 4 修复：提高颜色不透明度，暗色模式下更明显
         const colorMap = {
-            'amber': 'rgba(251, 191, 36, 0.5)',
-            'emerald': 'rgba(52, 211, 153, 0.5)',
-            'sky': 'rgba(56, 189, 248, 0.45)',
-            'rose': 'rgba(251, 113, 133, 0.45)',
-            'violet': 'rgba(167, 139, 250, 0.5)',
+            'amber': 'rgba(212, 148, 72, 0.36)',
+            'emerald': 'rgba(104, 157, 113, 0.34)',
+            'sky': 'rgba(100, 136, 168, 0.34)',
+            'rose': 'rgba(201, 100, 66, 0.34)',
+            'violet': 'rgba(155, 123, 184, 0.34)',
         };
 
         // 修复：优先使用新的 colorMap，然后是自定义颜色，最后是默认 amber
@@ -4077,17 +4667,719 @@ class App {
                 this.elements.saveIndicator?.classList.remove('saving');
                 this._updateSaveIndicator();
                 requestAnimationFrame(() => this.editor?.setScrollPercentage(editRatio));
+                this._showToast('检测到外部更新，已自动刷新', 'info');
             } else {
+                const oldBlockFingerprints = this._captureRenderedBlockFingerprints();
                 const html = content.trim() ? this.parser.parse(content) : ' ';
                 this.eventBus.emit(Events.CONTENT_PARSED, { html, outline });
                 requestAnimationFrame(() => {
                     this.renderer.setScrollPercentage(readRatio);
                     this._updateReadingProgress();
+                    const changedCount = this._highlightUpdatedBlocks(oldBlockFingerprints);
+                    if (changedCount > 0) {
+                        this._showToast(`外部已更新（高亮 ${changedCount} 处变动）`, 'info');
+                    } else {
+                        this._showToast('检测到外部更新，已自动刷新', 'info');
+                    }
                 });
             }
-
-            this._showToast('检测到外部更新，已自动刷新', 'info');
         });
+    }
+
+    /**
+     * 捕获当前阅读区各顶层块元素的文本指纹（用于对比外部/AI修改）
+     */
+    _captureRenderedBlockFingerprints() {
+        const counts = new Map();
+        if (!this.elements.content) return counts;
+        const blocks = this.elements.content.querySelectorAll(':scope > p, :scope > h1, :scope > h2, :scope > h3, :scope > h4, :scope > h5, :scope > h6, :scope > blockquote, :scope > .callout, :scope > pre, :scope > ul, :scope > ol, :scope > table, :scope > .math-block, :scope > .mermaid-block');
+        blocks.forEach((el) => {
+            const key = (el.textContent || '').replace(/\s+/g, ' ').trim();
+            if (!key) return;
+            counts.set(key, (counts.get(key) || 0) + 1);
+        });
+        return counts;
+    }
+
+    /**
+     * 给外部/AI刚改动或新增的段落左侧标上淡淡的陶土橘细竖线
+     */
+    _highlightUpdatedBlocks(oldCounts) {
+        if (!this.elements.content || !oldCounts || oldCounts.size === 0) return 0;
+
+        if (this._aiUpdatedFadeTimer) {
+            clearTimeout(this._aiUpdatedFadeTimer);
+            this._aiUpdatedFadeTimer = null;
+        }
+
+        const remaining = new Map(oldCounts);
+        const blocks = this.elements.content.querySelectorAll(':scope > p, :scope > h1, :scope > h2, :scope > h3, :scope > h4, :scope > h5, :scope > h6, :scope > blockquote, :scope > .callout, :scope > pre, :scope > ul, :scope > ol, :scope > table, :scope > .math-block, :scope > .mermaid-block');
+        const updatedEls = [];
+
+        blocks.forEach((el) => {
+            const key = (el.textContent || '').replace(/\s+/g, ' ').trim();
+            if (!key) return;
+            const left = remaining.get(key) || 0;
+            if (left > 0) {
+                remaining.set(key, left - 1);
+            } else {
+                el.classList.add('ai-updated-block');
+                updatedEls.push(el);
+            }
+        });
+
+        if (updatedEls.length > 0) {
+            const clearMarkers = () => {
+                updatedEls.forEach((el) => el.classList.add('ai-updated-fading'));
+                setTimeout(() => {
+                    updatedEls.forEach((el) => el.classList.remove('ai-updated-block', 'ai-updated-fading'));
+                }, 650);
+            };
+            this._aiUpdatedFadeTimer = setTimeout(clearMarkers, 12000);
+            this.elements.content.addEventListener('click', () => {
+                if (this._aiUpdatedFadeTimer) {
+                    clearTimeout(this._aiUpdatedFadeTimer);
+                    this._aiUpdatedFadeTimer = null;
+                    clearMarkers();
+                }
+            }, { once: true });
+        }
+
+        return updatedEls.length;
+    }
+
+    // ========== 划词引用给 AI / 按文件暂存攒着发 ==========
+
+    /**
+     * 获取当前文档的唯一暂存键（确保同一文件暂存合并、跨文件互不串台）
+     */
+    _getCurrentDocKey() {
+        if (this.currentFilePath) {
+            return this.currentFilePath.replace(/\\/g, '/').toLowerCase();
+        }
+        return `untitled:${this.elements.fileName?.textContent || '未命名'}`;
+    }
+
+    _getCurrentStagedQuotes() {
+        const key = this._getCurrentDocKey();
+        return this.stagedQuotesByFile.get(key) || [];
+    }
+
+    _setCurrentStagedQuotes(items) {
+        const key = this._getCurrentDocKey();
+        if (!items || items.length === 0) {
+            this.stagedQuotesByFile.delete(key);
+        } else {
+            this.stagedQuotesByFile.set(key, items);
+        }
+    }
+
+    _getActiveAiProvider() {
+        return this.aiProviders.find(p => p.id === this.aiTarget) || null;
+    }
+
+    /**
+     * 动态发送文案：只有 1 个 AI 时统一称「发给 AI」，未来配置多个 AI 时显示「发给 某某」
+     */
+    _getSendTargetDisplayName() {
+        const provider = this._getActiveAiProvider();
+        if (!provider) return '剪贴板';
+        return this.aiProviders.length > 1 ? provider.name : 'AI';
+    }
+
+    /**
+     * 初始化划词引用浮窗、右下角暂存栏及设置项
+     */
+    _initAiQuoteFlow() {
+        const {
+            aiQuoteClose,
+            aiQuoteInput,
+            aiQuoteStageBtn,
+            aiQuoteSendBtn,
+            aiQuoteTargetToggle,
+            aiStageToggle,
+            aiStageClearBtn,
+            aiStageSendBtn,
+            aiStageTargetBtn,
+            aiStageTargetMenu,
+            selectionQuoteBtn,
+            revealAiBridgeBtn
+        } = this.elements;
+
+        if (selectionQuoteBtn) {
+            selectionQuoteBtn.title = this.isMac ? '引用这段话发给 AI (⌘L)' : '引用这段话发给 AI (Ctrl+L)';
+        }
+        if (aiQuoteStageBtn) {
+            aiQuoteStageBtn.title = this.isMac ? '先存起来，攒几条一起发 (⌘↵)' : '先存起来，攒几条一起发 (Ctrl+↵)';
+        }
+
+        this._renderAiTargetMenu();
+        this._updateAiTargetUI();
+        this._renderStagedQuotesUI();
+
+        revealAiBridgeBtn?.addEventListener('click', async () => {
+            if (!window.electronAPI?.revealAiBridgePlugin) {
+                this._showToast('该功能仅在桌面版可用', 'info');
+                return;
+            }
+            const res = await window.electronAPI.revealAiBridgePlugin();
+            if (res?.success) {
+                this._showToast('已打开插件目录并复制路径，在 DSH 插件页添加本地目录即可', 'success');
+            } else {
+                this._showToast(res?.error || '未找到内置桥接插件目录', 'error');
+            }
+        });
+
+        aiQuoteClose?.addEventListener('click', () => this._closeAiQuotePopover());
+
+        aiQuoteTargetToggle?.addEventListener('click', () => {
+            const ids = [...this.aiProviders.map(p => p.id), 'clipboard'];
+            const idx = ids.indexOf(this.aiTarget);
+            const next = ids[(idx + 1) % ids.length];
+            this._setAiTarget(next);
+        });
+
+        aiQuoteStageBtn?.addEventListener('click', () => {
+            this._stageCurrentQuote();
+        });
+
+        aiQuoteSendBtn?.addEventListener('click', () => {
+            this._sendCurrentQuoteNow();
+        });
+
+        aiQuoteInput?.addEventListener('keydown', (e) => {
+            if (e.isComposing) return;
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                this._closeAiQuotePopover();
+                return;
+            }
+            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                e.preventDefault();
+                this._stageCurrentQuote();
+                return;
+            }
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                this._sendCurrentQuoteNow();
+            }
+        });
+
+        aiStageToggle?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.aiStageDrawerOpen = !this.aiStageDrawerOpen;
+            if (this.elements.aiStageTargetMenu) {
+                this.elements.aiStageTargetMenu.style.display = 'none';
+            }
+            this._renderStagedQuotesUI();
+        });
+
+        aiStageClearBtn?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this._setCurrentStagedQuotes([]);
+            this.aiStageDrawerOpen = false;
+            this._renderStagedQuotesUI();
+            this._showToast('已清空当前文档的暂存引用', 'info');
+        });
+
+        aiStageSendBtn?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this._sendStagedQuotes();
+        });
+
+        aiStageTargetBtn?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (!aiStageTargetMenu) return;
+            const visible = aiStageTargetMenu.style.display !== 'none';
+            aiStageTargetMenu.style.display = visible ? 'none' : 'flex';
+        });
+    }
+
+    /**
+     * 动态渲染发送目标菜单（后续支持多 AI 时只需往 aiProviders 追加）
+     */
+    _renderAiTargetMenu() {
+        const menu = this.elements.aiStageTargetMenu;
+        if (!menu) return;
+
+        const providerRows = this.aiProviders.map((p) => {
+            const label = this.aiProviders.length > 1
+                ? `发给 ${p.name}`
+                : `发给 AI（当前：${p.name}）`;
+            return `
+                <button type="button" class="ai-target-menu-item" data-target="${p.id}">
+                    <span>${label}</span>
+                    <span class="ai-target-check">✓</span>
+                </button>
+            `;
+        }).join('');
+
+        menu.innerHTML = `${providerRows}
+            <button type="button" class="ai-target-menu-item" data-target="clipboard">
+                <span>仅复制到剪贴板</span>
+                <span class="ai-target-check">✓</span>
+            </button>
+        `;
+
+        menu.querySelectorAll('.ai-target-menu-item').forEach((btn) => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const target = btn.dataset.target;
+                if (target) {
+                    this._setAiTarget(target);
+                }
+                menu.style.display = 'none';
+            });
+        });
+    }
+
+    /**
+     * 切换默认发送目标 (providerId | 'clipboard')
+     */
+    _setAiTarget(target) {
+        const valid = target === 'clipboard' || this.aiProviders.some(p => p.id === target);
+        this.aiTarget = valid ? target : this.aiProviders[0].id;
+        localStorage.setItem('mditor-ai-target', this.aiTarget);
+        this._updateAiTargetUI();
+    }
+
+    _updateAiTargetUI() {
+        const provider = this._getActiveAiProvider();
+        const targetDisplay = this._getSendTargetDisplayName();
+
+        if (this.elements.aiProviderName) {
+            this.elements.aiProviderName.textContent = provider ? provider.name : '仅复制';
+        }
+        if (this.elements.aiQuoteTargetLabel) {
+            this.elements.aiQuoteTargetLabel.textContent = provider
+                ? `目标: ${provider.name}`
+                : '目标: 仅复制';
+        }
+        if (this.elements.aiStageSendBtn) {
+            this.elements.aiStageSendBtn.textContent = provider ? `发给 ${targetDisplay}` : '复制全部';
+        }
+        this.elements.aiStageTargetMenu?.querySelectorAll('.ai-target-menu-item').forEach((btn) => {
+            btn.classList.toggle('active', btn.dataset.target === this.aiTarget);
+        });
+        this._updateQuoteSendButtonLabel();
+    }
+
+    _updateQuoteSendButtonLabel() {
+        const btn = this.elements.aiQuoteSendBtn;
+        if (!btn) return;
+        const count = this._getCurrentStagedQuotes().length;
+        const provider = this._getActiveAiProvider();
+        const targetDisplay = this._getSendTargetDisplayName();
+        if (provider) {
+            btn.textContent = count > 0 ? `合并发送 (${count + 1}) → ${targetDisplay}` : `发给 ${targetDisplay}`;
+        } else {
+            btn.textContent = count > 0 ? `合并复制 (${count + 1})` : '复制引用';
+        }
+    }
+
+    /**
+     * 编辑模式：检测选区并浮现极简「引用」胶囊
+     */
+    _handleEditModeSelection() {
+        if (!this.isEditMode || !this.editor?.view) return;
+        const view = this.editor.view;
+        const { from, to } = view.state.selection.main;
+        if (from === to) {
+            this._hideHighlightTrigger();
+            return;
+        }
+        const selectedText = view.state.sliceDoc(from, to).trim();
+        if (!selectedText) {
+            this._hideHighlightTrigger();
+            return;
+        }
+        const startCoords = view.coordsAtPos(from);
+        const endCoords = view.coordsAtPos(to);
+        const rect = endCoords || startCoords;
+        if (!rect) return;
+
+        this._showHighlightTrigger({
+            left: startCoords ? Math.min(startCoords.left, rect.left) : rect.left,
+            right: rect.right,
+            top: startCoords ? Math.min(startCoords.top, rect.top) : rect.top,
+            bottom: Math.max(startCoords ? startCoords.bottom : rect.bottom, rect.bottom),
+            width: Math.max(20, Math.abs(rect.right - (startCoords ? startCoords.left : rect.left))),
+            height: Math.max(16, rect.bottom - rect.top)
+        }, true);
+    }
+
+    /**
+     * 根据当前选区（阅读模式或编辑模式）提取引用原文、章节/行号和定位矩形
+     */
+    _captureActiveQuoteContext() {
+        const fileName = this.elements.fileName?.textContent || '未命名';
+        const filePath = this.currentFilePath || null;
+
+        if (this.isEditMode && this.editor?.view) {
+            const view = this.editor.view;
+            const { from, to } = view.state.selection.main;
+            if (from === to) return null;
+            const quote = view.state.sliceDoc(from, to).trim();
+            if (!quote) return null;
+
+            const startLine = view.state.doc.lineAt(from).number;
+            const endLine = view.state.doc.lineAt(to).number;
+            const lineLabel = startLine === endLine ? `第 ${startLine} 行` : `第 ${startLine}-${endLine} 行`;
+            const heading = this._findNearestHeadingByLine(startLine);
+            const location = heading ? `${heading} · ${lineLabel}` : lineLabel;
+
+            const coords = view.coordsAtPos(to) || view.coordsAtPos(from);
+            const rect = coords
+                ? { left: coords.left, right: coords.right, top: coords.top, bottom: coords.bottom }
+                : { left: window.innerWidth / 2, right: window.innerWidth / 2, top: window.innerHeight / 3, bottom: window.innerHeight / 3 };
+
+            return { quote, location, heading, lineLabel, filePath, fileName, rect };
+        }
+
+        // 阅读模式：优先使用实时选区，其次回退到刚保存的选区
+        let range = null;
+        const selection = window.getSelection();
+        if (selection && selection.rangeCount > 0 && !selection.getRangeAt(0).collapsed) {
+            range = selection.getRangeAt(0);
+        } else if (this._currentSelectionRange && !this._currentSelectionRange.collapsed) {
+            range = this._currentSelectionRange;
+        }
+        if (!range) return null;
+
+        const contentArea = this.elements.content;
+        if (!contentArea || !contentArea.contains(range.startContainer)) return null;
+
+        const quote = range.toString().trim();
+        if (!quote) return null;
+
+        const heading = this._findNearestHeadingForNode(range.startContainer);
+        const location = heading ? `章节：${heading}` : fileName;
+
+        let rect = range.getBoundingClientRect();
+        if (!rect || (rect.width === 0 && rect.height === 0)) {
+            const rects = range.getClientRects();
+            rect = rects && rects.length > 0 ? rects[rects.length - 1] : {
+                left: window.innerWidth / 2,
+                right: window.innerWidth / 2,
+                top: window.innerHeight / 3,
+                bottom: window.innerHeight / 3
+            };
+        }
+
+        return { quote, location, heading, lineLabel: null, filePath, fileName, rect };
+    }
+
+    _findNearestHeadingForNode(node) {
+        const contentArea = this.elements.content;
+        if (!contentArea || !node) return '';
+        let topChild = node.nodeType === Node.TEXT_NODE ? node.parentElement : node;
+        while (topChild && topChild.parentElement !== contentArea) {
+            topChild = topChild.parentElement;
+        }
+        let cursor = topChild;
+        while (cursor) {
+            if (/^H[1-6]$/.test(cursor.tagName)) {
+                return (cursor.textContent || '').trim();
+            }
+            cursor = cursor.previousElementSibling;
+        }
+        return '';
+    }
+
+    _findNearestHeadingByLine(lineNum) {
+        const outline = this.parser.extractOutline(this.currentContent || '');
+        let found = '';
+        for (const item of outline) {
+            if (item.line <= lineNum) {
+                found = item.text;
+            } else {
+                break;
+            }
+        }
+        return found;
+    }
+
+    /**
+     * 打开「引用给 AI」浮动卡片
+     */
+    _openAiQuoteFromActiveSelection() {
+        const ctx = this._captureActiveQuoteContext();
+        if (!ctx) {
+            // 若没有新选区但当前文档已有暂存，展开暂存抽屉方便查看或直接发送
+            if (this._getCurrentStagedQuotes().length > 0) {
+                this.aiStageDrawerOpen = true;
+                this._renderStagedQuotesUI();
+            } else {
+                this._showToast('请先用鼠标划选一段文字', 'info');
+            }
+            return;
+        }
+
+        this._hideHighlightTrigger();
+        this._hideHighlightPicker();
+
+        this._pendingQuoteContext = ctx;
+        const popover = this.elements.aiQuotePopover;
+        if (!popover) return;
+
+        if (this.elements.aiQuoteLocation) {
+            this.elements.aiQuoteLocation.textContent = ctx.location;
+        }
+        if (this.elements.aiQuoteText) {
+            this.elements.aiQuoteText.textContent = ctx.quote;
+            this.elements.aiQuoteText.title = ctx.quote;
+        }
+        if (this.elements.aiQuoteInput) {
+            this.elements.aiQuoteInput.value = '';
+        }
+
+        this._updateQuoteSendButtonLabel();
+
+        popover.style.display = 'flex';
+        this.aiQuoteVisible = true;
+
+        // 智能定位在选区下方（空间不足时放在上方）
+        const popRect = popover.getBoundingClientRect();
+        const vw = window.innerWidth;
+        const vh = window.innerHeight;
+        let left = ctx.rect.left + (ctx.rect.right - ctx.rect.left) / 2 - popRect.width / 2;
+        let top = ctx.rect.bottom + 10;
+
+        if (left < 14) left = 14;
+        if (left + popRect.width > vw - 14) left = vw - popRect.width - 14;
+        if (top + popRect.height > vh - 36) {
+            top = ctx.rect.top - popRect.height - 10;
+        }
+        if (top < 46) top = 46;
+
+        popover.style.left = `${Math.round(left)}px`;
+        popover.style.top = `${Math.round(top)}px`;
+
+        requestAnimationFrame(() => {
+            this.elements.aiQuoteInput?.focus();
+        });
+    }
+
+    _closeAiQuotePopover() {
+        this.aiQuoteVisible = false;
+        this._pendingQuoteContext = null;
+        if (this.elements.aiQuotePopover) {
+            this.elements.aiQuotePopover.style.display = 'none';
+        }
+    }
+
+    /**
+     * 暂存当前引用（按当前文档隔离，攒着一起发）
+     */
+    _stageCurrentQuote() {
+        if (!this._pendingQuoteContext) return;
+        const note = (this.elements.aiQuoteInput?.value || '').trim();
+        const list = [...this._getCurrentStagedQuotes(), {
+            id: `q-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+            quote: this._pendingQuoteContext.quote,
+            note,
+            location: this._pendingQuoteContext.location,
+            heading: this._pendingQuoteContext.heading,
+            lineLabel: this._pendingQuoteContext.lineLabel,
+            filePath: this._pendingQuoteContext.filePath,
+            fileName: this._pendingQuoteContext.fileName
+        }];
+        this._setCurrentStagedQuotes(list);
+
+        this._closeAiQuotePopover();
+        this._renderStagedQuotesUI();
+        this._showToast(`已暂存（当前文档共 ${list.length} 条，可继续划选）`, 'success');
+    }
+
+    /**
+     * 立即发送当前引用（若当前文档之前有暂存，自动合并一起发送）
+     */
+    async _sendCurrentQuoteNow() {
+        if (!this._pendingQuoteContext) return;
+        const note = (this.elements.aiQuoteInput?.value || '').trim();
+        const currentItem = {
+            id: `q-${Date.now()}`,
+            quote: this._pendingQuoteContext.quote,
+            note,
+            location: this._pendingQuoteContext.location,
+            heading: this._pendingQuoteContext.heading,
+            lineLabel: this._pendingQuoteContext.lineLabel,
+            filePath: this._pendingQuoteContext.filePath,
+            fileName: this._pendingQuoteContext.fileName
+        };
+
+        const batch = [...this._getCurrentStagedQuotes(), currentItem];
+        this._closeAiQuotePopover();
+
+        const ok = await this._dispatchQuotesToAi(batch);
+        if (ok) {
+            this._setCurrentStagedQuotes([]);
+            this.aiStageDrawerOpen = false;
+            this._renderStagedQuotesUI();
+        }
+    }
+
+    /**
+     * 发送当前文档全部已暂存引用
+     */
+    async _sendStagedQuotes() {
+        const list = this._getCurrentStagedQuotes();
+        if (list.length === 0) {
+            this._showToast('当前文档暂无已暂存的引用', 'info');
+            return;
+        }
+        const batch = [...list];
+        const ok = await this._dispatchQuotesToAi(batch);
+        if (ok) {
+            this._setCurrentStagedQuotes([]);
+            this.aiStageDrawerOpen = false;
+            this._renderStagedQuotesUI();
+        }
+    }
+
+    /**
+     * 组装带文件上下文与章节引用的结构化 Prompt
+     */
+    _buildAiReviewPrompt(items) {
+        if (!items || items.length === 0) return '';
+
+        const uniquePaths = [...new Set(items.map(it => it.filePath).filter(Boolean))];
+        const singleFilePath = uniquePaths.length === 1 ? uniquePaths[0] : null;
+        const singleFileName = items[0]?.fileName || '未命名';
+
+        const formatQuoteBlock = (text) =>
+            String(text || '')
+                .split('\n')
+                .map(line => `> ${line}`)
+                .join('\n');
+
+        if (items.length === 1) {
+            const it = items[0];
+            const header = it.filePath
+                ? `关于文件 \`${it.filePath}\`${it.location ? `（${it.location}）` : ''}中的这段内容：`
+                : `关于文档《${singleFileName}》${it.location ? `（${it.location}）` : ''}中的这段内容：`;
+
+            const quotePart = formatQuoteBlock(it.quote);
+            const notePart = it.note ? `\n\n${it.note}` : '\n\n请帮我审阅或优化这段内容。';
+            return `${header}\n\n${quotePart}${notePart}`;
+        }
+
+        const header = singleFilePath
+            ? `请参考以下 ${items.length} 条引用和意见，处理文件 \`${singleFilePath}\`：`
+            : `请参考以下 ${items.length} 条引用和意见：`;
+
+        const body = items.map((it, idx) => {
+            const filePrefix = !singleFilePath && it.filePath ? `文件 \`${it.filePath}\` · ` : '';
+            const locText = it.location ? `【${filePrefix}${it.location}】` : (filePrefix ? `【${filePrefix.replace(/ · $/, '')}】` : '');
+            const quoteLines = formatQuoteBlock(it.quote);
+            const noteLine = it.note ? `\n意见：${it.note}` : '\n意见：（请重点审阅/优化此段）';
+            return `${idx + 1}. ${locText}\n${quoteLines}${noteLine}`;
+        }).join('\n\n');
+
+        return `${header}\n\n${body}`;
+    }
+
+    /**
+     * 将组装好的 Prompt 发送给本机 AI 或复制到剪贴板
+     */
+    async _dispatchQuotesToAi(items) {
+        const prompt = this._buildAiReviewPrompt(items);
+        if (!prompt) return false;
+
+        const primaryPath = items.find(it => it.filePath)?.filePath || this.currentFilePath || null;
+        const provider = this._getActiveAiProvider();
+
+        if (provider && provider.id === 'dsh' && window.electronAPI?.sendToDsh) {
+            const result = await window.electronAPI.sendToDsh({
+                prompt,
+                filePath: primaryPath
+            });
+            if (result?.success) {
+                const label = this._getSendTargetDisplayName();
+                this._showToast(`已发送到 ${label} 新对话（同时已复制到剪贴板）`, 'success');
+                return true;
+            }
+            this._showToast(`发送失败，请重试: ${result?.error || ''}`, 'error');
+            return false;
+        }
+
+        // 仅复制模式或非 Electron 兜底
+        try {
+            if (window.electronAPI?.copyText) {
+                await window.electronAPI.copyText(prompt);
+            } else {
+                await navigator.clipboard.writeText(prompt);
+            }
+            this._showToast(`已复制 ${items.length} 条引用内容到剪贴板`, 'success');
+            return true;
+        } catch {
+            this._showToast('复制失败', 'error');
+            return false;
+        }
+    }
+
+    /**
+     * 渲染右下角暂存栏和抽屉列表（仅显示当前文档的暂存）
+     */
+    _renderStagedQuotesUI() {
+        const dock = this.elements.aiStageDock;
+        if (!dock) return;
+
+        const list = this._getCurrentStagedQuotes();
+        const count = list.length;
+        if (count === 0) {
+            dock.style.display = 'none';
+            dock.classList.remove('drawer-open');
+            if (this.elements.aiStageDrawer) this.elements.aiStageDrawer.style.display = 'none';
+            if (this.elements.aiStageTargetMenu) this.elements.aiStageTargetMenu.style.display = 'none';
+            return;
+        }
+
+        dock.style.display = 'flex';
+        dock.classList.toggle('drawer-open', this.aiStageDrawerOpen);
+
+        if (this.elements.aiStageCountText) {
+            this.elements.aiStageCountText.textContent = `已暂存 ${count} 条`;
+        }
+        if (this.elements.aiStageDrawerTitle) {
+            this.elements.aiStageDrawerTitle.textContent = `待发引用 (${count})`;
+        }
+
+        const drawer = this.elements.aiStageDrawer;
+        const listEl = this.elements.aiStageList;
+        if (drawer) {
+            drawer.style.display = this.aiStageDrawerOpen ? 'flex' : 'none';
+        }
+        if (listEl && this.aiStageDrawerOpen) {
+            const escape = (s) => String(s || '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;');
+
+            listEl.innerHTML = list.map((item, idx) => `
+                <div class="ai-stage-item" data-id="${item.id}">
+                    <div class="ai-stage-item-body">
+                        <div class="ai-stage-item-loc">${idx + 1}. ${escape(item.location || item.fileName)}</div>
+                        <div class="ai-stage-item-quote">${escape(item.quote)}</div>
+                        ${item.note ? `<div class="ai-stage-item-note">↳ ${escape(item.note)}</div>` : ''}
+                    </div>
+                    <button type="button" class="ai-stage-item-remove" data-remove-id="${item.id}" title="移除">×</button>
+                </div>
+            `).join('');
+
+            listEl.querySelectorAll('[data-remove-id]').forEach((btn) => {
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const id = btn.dataset.removeId;
+                    const remaining = this._getCurrentStagedQuotes().filter(it => it.id !== id);
+                    this._setCurrentStagedQuotes(remaining);
+                    if (remaining.length === 0) {
+                        this.aiStageDrawerOpen = false;
+                    }
+                    this._renderStagedQuotesUI();
+                });
+            });
+        }
     }
 
     /**
@@ -4114,6 +5406,133 @@ class App {
         searchPrev?.addEventListener('click', () => this._navigateSearch(-1));
         searchNext?.addEventListener('click', () => this._navigateSearch(1));
         searchClose?.addEventListener('click', () => this._closeSearch());
+    }
+
+    /**
+     * 初始化快速文件跳转面板 (Cmd/Ctrl+P)
+     */
+    _initQuickOpen() {
+        const { quickOpenModal, quickOpenInput, quickOpenList } = this.elements;
+        if (!quickOpenModal || !quickOpenInput || !quickOpenList) return;
+
+        quickOpenModal.querySelector('.quick-open-backdrop')?.addEventListener('click', () => {
+            this._closeQuickOpen();
+        });
+
+        quickOpenInput.addEventListener('input', () => {
+            this._filterQuickOpen(quickOpenInput.value.trim());
+        });
+
+        quickOpenInput.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                if (this.quickOpenFiltered.length > 0) {
+                    this.quickOpenIndex = (this.quickOpenIndex + 1) % this.quickOpenFiltered.length;
+                    this._renderQuickOpenList();
+                }
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                if (this.quickOpenFiltered.length > 0) {
+                    this.quickOpenIndex = (this.quickOpenIndex - 1 + this.quickOpenFiltered.length) % this.quickOpenFiltered.length;
+                    this._renderQuickOpenList();
+                }
+            } else if (e.key === 'Enter') {
+                e.preventDefault();
+                const target = this.quickOpenFiltered[this.quickOpenIndex];
+                if (target) {
+                    this._selectQuickOpenFile(target);
+                }
+            } else if (e.key === 'Escape') {
+                e.preventDefault();
+                this._closeQuickOpen();
+            }
+        });
+    }
+
+    async _openQuickOpen() {
+        const { quickOpenModal, quickOpenInput } = this.elements;
+        if (!quickOpenModal || !quickOpenInput) return;
+
+        // 确定扫描根目录
+        let rootDir = this.filetreeRoot;
+        if (!rootDir && this.currentFilePath && window.electronAPI?.getCurrentDirectory) {
+            rootDir = await window.electronAPI.getCurrentDirectory();
+            this.filetreeRoot = rootDir;
+        }
+
+        if (!rootDir || !window.electronAPI?.listMarkdownFiles) {
+            this._showToast('请先打开一个文件或文件夹工作区', 'info');
+            return;
+        }
+
+        this.quickOpenFiles = await window.electronAPI.listMarkdownFiles(rootDir);
+        this.quickOpenVisible = true;
+        quickOpenModal.style.display = 'flex';
+        quickOpenInput.value = '';
+        this._filterQuickOpen('');
+        quickOpenInput.focus();
+    }
+
+    _closeQuickOpen() {
+        this.quickOpenVisible = false;
+        if (this.elements.quickOpenModal) {
+            this.elements.quickOpenModal.style.display = 'none';
+        }
+    }
+
+    _filterQuickOpen(query) {
+        const q = (query || '').toLowerCase();
+        if (!q) {
+            this.quickOpenFiltered = this.quickOpenFiles.slice(0, 60);
+        } else {
+            this.quickOpenFiltered = this.quickOpenFiles
+                .filter(f => f.name.toLowerCase().includes(q) || f.relativePath.toLowerCase().includes(q))
+                .slice(0, 60);
+        }
+        this.quickOpenIndex = 0;
+        this._renderQuickOpenList();
+    }
+
+    _renderQuickOpenList() {
+        const listEl = this.elements.quickOpenList;
+        if (!listEl) return;
+
+        if (this.quickOpenFiltered.length === 0) {
+            listEl.innerHTML = '<div class="quick-open-empty">未找到匹配的 Markdown 文件</div>';
+            return;
+        }
+
+        listEl.innerHTML = this.quickOpenFiltered.map((file, idx) => `
+            <div class="quick-open-item${idx === this.quickOpenIndex ? ' active' : ''}" data-idx="${idx}">
+                <span class="quick-open-name">${file.name}</span>
+                <span class="quick-open-path">${file.relativePath}</span>
+            </div>
+        `).join('');
+
+        listEl.querySelectorAll('.quick-open-item').forEach(el => {
+            el.addEventListener('click', () => {
+                const idx = parseInt(el.dataset.idx, 10);
+                const target = this.quickOpenFiltered[idx];
+                if (target) {
+                    this._selectQuickOpenFile(target);
+                }
+            });
+        });
+
+        const activeItem = listEl.querySelector('.quick-open-item.active');
+        activeItem?.scrollIntoView({ block: 'nearest' });
+    }
+
+    async _selectQuickOpenFile(file) {
+        this._closeQuickOpen();
+        if (!file?.path || !window.electronAPI?.readFile) return;
+
+        const data = await window.electronAPI.readFile(file.path);
+        if (data && data.content !== undefined) {
+            this.currentFilePath = data.filePath;
+            this._onFileLoaded(data.content, data.fileName);
+            this._updateFileTreeHighlight();
+        }
     }
 
     _openSearch() {

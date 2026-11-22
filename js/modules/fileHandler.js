@@ -77,8 +77,8 @@ class FileHandler {
      */
     _setupKeyboard() {
         document.addEventListener('keydown', (e) => {
-            // Ctrl+O 打开文件
-            if (e.ctrlKey && e.key === 'o') {
+            // Ctrl/Cmd+O 打开文件
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'o') {
                 e.preventDefault();
                 this.openFilePicker();
             }
@@ -95,13 +95,29 @@ class FileHandler {
     }
 
     /**
-     * 处理文件
+     * 处理文件或拖拽的文件夹
      */
-    _handleFile(file) {
+    async _handleFile(file) {
+        // 如果在 Electron 环境且拖入的是文件夹，交由文件夹加载逻辑处理
+        if (file.path && window.electronAPI?.statPath) {
+            try {
+                const stat = await window.electronAPI.statPath(file.path);
+                if (stat && stat.isDirectory) {
+                    this.eventBus.emit('folder:loaded', {
+                        folderPath: stat.path,
+                        folderName: stat.name
+                    });
+                    return;
+                }
+            } catch {
+                // ignore and fallback to file handling
+            }
+        }
+
         // 验证文件类型
         if (!this._isMarkdownFile(file)) {
             this.eventBus.emit(Events.FILE_ERROR, {
-                message: '请选择 Markdown 文件 (.md, .markdown, .txt)'
+                message: '请选择 Markdown 文件 (.md, .markdown, .txt, .mkd, .mdx) 或文件夹'
             });
             return;
         }
