@@ -316,37 +316,28 @@ class Renderer {
             const mermaid = await this._ensureMermaidLoaded();
             if (!mermaid) return;
 
-            const isDark = this.state.get('ui.theme') === 'dark';
+            const themeId = this.state.get('ui.theme') || 'light';
+            const isDark = themeId === 'dark' || themeId === 'midnight';
+            const styles = getComputedStyle(document.documentElement);
+            const readVar = (name, fallback) => (styles.getPropertyValue(name) || '').trim() || fallback;
+
             mermaid.initialize({
                 startOnLoad: false,
                 securityLevel: 'strict',
                 theme: 'base',
-                themeVariables: isDark ? {
-                    darkMode: true,
-                    background: '#181714',
+                themeVariables: {
+                    darkMode: isDark,
+                    background: readVar('--bg-card', isDark ? '#181714' : '#FAF8F3'),
                     fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif',
-                    primaryColor: '#2A2824',
-                    primaryTextColor: '#ECE8DF',
-                    primaryBorderColor: '#D97757',
-                    lineColor: '#A8A296',
-                    secondaryColor: '#21201C',
-                    tertiaryColor: '#1A1916',
-                    noteBkgColor: '#2A2824',
-                    noteTextColor: '#ECE8DF',
-                    noteBorderColor: '#D97757'
-                } : {
-                    darkMode: false,
-                    background: '#FAF8F3',
-                    fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif',
-                    primaryColor: '#EBE6DC',
-                    primaryTextColor: '#26231E',
-                    primaryBorderColor: '#C96442',
-                    lineColor: '#635D53',
-                    secondaryColor: '#E4DFD3',
-                    tertiaryColor: '#F4F1EA',
-                    noteBkgColor: '#EBE6DC',
-                    noteTextColor: '#26231E',
-                    noteBorderColor: '#C96442'
+                    primaryColor: readVar('--bg-sidebar', isDark ? '#2A2824' : '#EBE6DC'),
+                    primaryTextColor: readVar('--text-primary', isDark ? '#ECE8DF' : '#26231E'),
+                    primaryBorderColor: readVar('--color-accent', isDark ? '#D97757' : '#C96442'),
+                    lineColor: readVar('--text-secondary', isDark ? '#A8A296' : '#635D53'),
+                    secondaryColor: readVar('--bg-secondary', isDark ? '#21201C' : '#E4DFD3'),
+                    tertiaryColor: readVar('--bg-body', isDark ? '#1A1916' : '#F4F1EA'),
+                    noteBkgColor: readVar('--bg-sidebar', isDark ? '#2A2824' : '#EBE6DC'),
+                    noteTextColor: readVar('--text-primary', isDark ? '#ECE8DF' : '#26231E'),
+                    noteBorderColor: readVar('--color-accent', isDark ? '#D97757' : '#C96442')
                 }
             });
 

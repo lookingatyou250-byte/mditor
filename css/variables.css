@@ -65,7 +65,69 @@
   --shadow-float: 0 12px 28px -4px rgba(38, 35, 30, 0.11), 0 4px 10px -2px rgba(38, 35, 30, 0.06);
 }
 
-/* 暗色主题 - Claude 暖浓缩咖啡 / 焙茶炭黑风格 */
+/* 亮色主题 2 - 纯净纸白 (极简清爽白) */
+:root[data-theme="paper"],
+body[data-theme="paper"] {
+  --bg-body: #FCFCFB;
+  --bg-sidebar: #F5F5F3;
+  --bg-secondary: #ECECE9;
+  --bg-card: #FFFFFF;
+  --bg-elevated: rgba(24, 24, 27, 0.032);
+  --bg-hover: rgba(24, 24, 27, 0.055);
+  --bg-active: rgba(59, 108, 168, 0.12);
+  --bg-code: #F4F5F6;
+  --bg-code-inline: rgba(59, 108, 168, 0.09);
+  --bg-mark: rgba(234, 179, 8, 0.24);
+
+  --text-primary: #1C1D20;
+  --text-secondary: #555860;
+  --text-tertiary: #8B8F99;
+  --text-code: #2C5687;
+
+  --color-primary: #1C1D20;
+  --color-primary-light: rgba(59, 108, 168, 0.18);
+  --color-accent: #3B6CA8;
+  --color-accent-hover: #2E578A;
+  --color-accent-soft: rgba(59, 108, 168, 0.10);
+  --color-border: #E5E7EB;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 12px -2px rgba(0, 0, 0, 0.07), 0 2px 4px -1px rgba(0, 0, 0, 0.04);
+  --shadow-float: 0 12px 28px -4px rgba(0, 0, 0, 0.10), 0 4px 10px -2px rgba(0, 0, 0, 0.05);
+}
+
+/* 亮色主题 3 - 护眼松绿 (柔和莫兰迪浅豆沙绿) */
+:root[data-theme="sage"],
+body[data-theme="sage"] {
+  --bg-body: #EDF2EC;
+  --bg-sidebar: #E3EAE2;
+  --bg-secondary: #D9E2D8;
+  --bg-card: #F5F8F4;
+  --bg-elevated: rgba(33, 52, 38, 0.042);
+  --bg-hover: rgba(33, 52, 38, 0.068);
+  --bg-active: rgba(66, 122, 88, 0.14);
+  --bg-code: #E4EBE3;
+  --bg-code-inline: rgba(66, 122, 88, 0.11);
+  --bg-mark: rgba(186, 152, 68, 0.26);
+
+  --text-primary: #1E2A22;
+  --text-secondary: #4D6052;
+  --text-tertiary: #7B8E80;
+  --text-code: #2F6847;
+
+  --color-primary: #1E2A22;
+  --color-primary-light: rgba(66, 122, 88, 0.20);
+  --color-accent: #427A58;
+  --color-accent-hover: #336346;
+  --color-accent-soft: rgba(66, 122, 88, 0.11);
+  --color-border: #CFDAD0;
+
+  --shadow-sm: 0 1px 2px rgba(24, 38, 28, 0.06);
+  --shadow-md: 0 4px 12px -2px rgba(24, 38, 28, 0.07), 0 2px 4px -1px rgba(24, 38, 28, 0.04);
+  --shadow-float: 0 12px 28px -4px rgba(24, 38, 28, 0.11), 0 4px 10px -2px rgba(24, 38, 28, 0.06);
+}
+
+/* 暗色主题 1 - Claude 暖浓缩咖啡 / 焙茶炭黑风格 */
 :root[data-theme="dark"],
 body[data-theme="dark"] {
   /* 基础背景与表面 */
@@ -98,4 +160,35 @@ body[data-theme="dark"] {
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.32);
   --shadow-md: 0 4px 12px -2px rgba(0, 0, 0, 0.42);
   --shadow-float: 0 12px 28px -4px rgba(0, 0, 0, 0.55);
+}
+
+/* 暗色主题 2 - 静谧墨蓝 (深海护眼蓝灰) */
+:root[data-theme="midnight"],
+body[data-theme="midnight"] {
+  --bg-body: #161B22;
+  --bg-sidebar: #11161C;
+  --bg-secondary: #1F2630;
+  --bg-card: #1C222B;
+  --bg-elevated: rgba(220, 232, 248, 0.045);
+  --bg-hover: rgba(220, 232, 248, 0.072);
+  --bg-active: rgba(108, 164, 232, 0.18);
+  --bg-code: #10141A;
+  --bg-code-inline: rgba(108, 164, 232, 0.15);
+  --bg-mark: rgba(108, 164, 232, 0.26);
+
+  --text-primary: #E3EAF2;
+  --text-secondary: #9AA8B8;
+  --text-tertiary: #6B7888;
+  --text-code: #95C2F5;
+
+  --color-primary: #E3EAF2;
+  --color-primary-light: rgba(108, 164, 232, 0.26);
+  --color-accent: #6CA4E8;
+  --color-accent-hover: #89B8F0;
+  --color-accent-soft: rgba(108, 164, 232, 0.14);
+  --color-border: #283240;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.36);
+  --shadow-md: 0 4px 12px -2px rgba(0, 0, 0, 0.48);
+  --shadow-float: 0 12px 28px -4px rgba(0, 0, 0, 0.60);
 }

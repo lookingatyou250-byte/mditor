@@ -100,6 +100,8 @@ body {
     color: #FAF9F5;
 }
 
+:root[data-color-scheme="dark"] .toast,
+body[data-color-scheme="dark"] .toast,
 :root[data-theme="dark"] .toast,
 body[data-theme="dark"] .toast {
     background-color: #FAF9F5;

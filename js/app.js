@@ -246,6 +246,7 @@ class App {
             fileName: document.getElementById('file-name'),
             saveIndicator: document.getElementById('save-indicator'),
             themeBtn: document.getElementById('theme-toggle'),
+            themePopover: document.getElementById('theme-popover'),
             sidebarBtn: document.getElementById('sidebar-toggle'),
             modeToggleBtn: document.getElementById('mode-toggle'),
             focusBtn: document.getElementById('focus-toggle'),
@@ -501,9 +502,22 @@ class App {
      * 绑定标题栏事件
      */
     _bindTitlebarEvents() {
-        // 主题切换
-        this.elements.themeBtn?.addEventListener('click', () => {
-            this._toggleTheme();
+        // 调色盘主题菜单开关
+        this.elements.themeBtn?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this._toggleThemePopover();
+        });
+
+        // 调色盘选项点击
+        this.elements.themePopover?.querySelectorAll('.theme-option').forEach((btn) => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const themeId = btn.dataset.themeId;
+                if (themeId) {
+                    this._setTheme(themeId);
+                }
+                this._hideThemePopover();
+            });
         });
 
         // 侧边栏切换
@@ -552,9 +566,10 @@ class App {
             });
         });
 
-        // 点击外部关闭下拉菜单
+        // 点击外部关闭下拉菜单与调色盘
         document.addEventListener('click', () => {
             this._hideFileDropdown();
+            this._hideThemePopover();
         });
 
         // 阅读模式：双击临时高亮移除（修复 Bug 1）
@@ -1053,10 +1068,12 @@ class App {
                 return;
             }
 
-            // Esc 关闭灯箱 / 引用弹窗 / 快速跳转 / 搜索条
+            // Esc 关闭灯箱 / 调色盘 / 引用弹窗 / 快速跳转 / 搜索条
             if (e.key === 'Escape') {
                 if (this.elements.imageLightbox && this.elements.imageLightbox.style.display !== 'none') {
                     this._closeLightbox();
+                } else if (this.elements.themePopover && this.elements.themePopover.style.display !== 'none') {
+                    this._hideThemePopover();
                 } else if (this.aiQuoteVisible) {
                     this._closeAiQuotePopover();
                 } else if (this.quickOpenVisible) {
@@ -1765,7 +1782,7 @@ class App {
 
             if (!this.editor && window.MditorEditor) {
                 this.editor = new window.MditorEditor();
-                const isDark = this.state.get('ui.theme') === 'dark';
+                const isDark = this._isDarkTheme(this.state.get('ui.theme'));
                 this.editor.init(this.elements.editorContainer, this.currentContent, {
                     isDark,
                     onChange: (content) => {
@@ -1946,47 +1963,98 @@ class App {
     }
 
     /**
-     * 切换主题
+     * 判断指定主题是否为深色系
      */
-    _toggleTheme() {
-        const current = this.state.get('ui.theme');
-        const next = current === 'light' ? 'dark' : 'light';
+    _isDarkTheme(theme) {
+        return theme === 'dark' || theme === 'midnight';
+    }
+
+    /**
+     * 展开 / 收起调色盘下拉面板
+     */
+    _toggleThemePopover() {
+        const popover = this.elements.themePopover;
+        if (!popover) return;
+        const isVisible = popover.style.display !== 'none';
+        if (isVisible) {
+            this._hideThemePopover();
+        } else {
+            this._hideFileDropdown();
+            this._syncThemePopoverUI();
+            popover.style.display = 'flex';
+            this.elements.themeBtn?.classList.add('active');
+        }
+    }
+
+    _hideThemePopover() {
+        if (this.elements.themePopover) {
+            this.elements.themePopover.style.display = 'none';
+        }
+        this.elements.themeBtn?.classList.remove('active');
+    }
+
+    _syncThemePopoverUI() {
+        const current = this.state.get('ui.theme') || 'light';
+        this.elements.themePopover?.querySelectorAll('.theme-option').forEach((btn) => {
+            btn.classList.toggle('active', btn.dataset.themeId === current);
+        });
+    }
+
+    /**
+     * 切换到指定主题并持久化同步到所有窗口
+     */
+    _setTheme(themeId, showNotice = false) {
+        const themes = {
+            light: '暖羊皮纸',
+            paper: '纯净纸白',
+            sage: '护眼松绿',
+            dark: '暖炭黑',
+            midnight: '静谧墨蓝'
+        };
+        const next = themes[themeId] ? themeId : 'light';
 
         this.state.set('ui.theme', next);
         this.state.persistTheme();
         this._applyTheme();
 
         if (this.editor) {
-            this.editor.setDarkMode(next === 'dark');
+            this.editor.setDarkMode(this._isDarkTheme(next));
         }
 
         this.eventBus.emit(Events.THEME_CHANGED, next);
+        if (showNotice) {
+            this._showToast(`配色：${themes[next]}`, 'info');
+        }
     }
 
     /**
-     * 应用主题（同时同步 html 与 body 的 data-theme，修复暗色切回亮色失效问题）
+     * 快捷键循环切换主题 (⌘⇧D / Ctrl+Shift+D)
+     */
+    _toggleTheme() {
+        const order = ['light', 'paper', 'sage', 'dark', 'midnight'];
+        const current = this.state.get('ui.theme') || 'light';
+        const idx = order.indexOf(current);
+        const next = order[(idx + 1) % order.length];
+        this._setTheme(next, true);
+    }
+
+    /**
+     * 应用主题（同时同步 html 与 body 的 data-theme 与 data-color-scheme）
      */
     _applyTheme() {
-        const theme = this.state.get('ui.theme');
+        const theme = this.state.get('ui.theme') || 'light';
+        const isDark = this._isDarkTheme(theme);
         document.documentElement.dataset.theme = theme;
         document.body.dataset.theme = theme;
+        document.documentElement.dataset.colorScheme = isDark ? 'dark' : 'light';
+        document.body.dataset.colorScheme = isDark ? 'dark' : 'light';
 
-        // 更新主题图标
-        const themeIcon = this.elements.themeBtn?.querySelector('.theme-icon');
-        if (themeIcon) {
-            if (theme === 'dark') {
-                // 亮色模式时显示太阳图标
-                themeIcon.innerHTML = '<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>';
-            } else {
-                // 暗色模式时显示月亮图标
-                themeIcon.innerHTML = '<path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>';
-            }
-        }
+        this._syncThemePopoverUI();
 
         // 切换代码高亮主题（使用本地离线样式）
         const hljsTheme = document.getElementById('hljs-theme');
         if (hljsTheme) {
-            hljsTheme.href = theme === 'dark'
+            hljsTheme.href = isDark
                 ? 'lib/hljs-github-dark.min.css'
                 : 'lib/hljs-github.min.css';
         }
@@ -2004,7 +2072,7 @@ class App {
                     localStorage.setItem('md-reader-theme', theme);
                     this._applyTheme();
                     if (this.editor) {
-                        this.editor.setDarkMode(theme === 'dark');
+                        this.editor.setDarkMode(this._isDarkTheme(theme));
                     }
                     this.eventBus.emit(Events.THEME_CHANGED, theme);
                 }
@@ -2019,7 +2087,7 @@ class App {
                 localStorage.setItem('md-reader-theme', theme);
                 this._applyTheme();
                 if (this.editor) {
-                    this.editor.setDarkMode(theme === 'dark');
+                    this.editor.setDarkMode(this._isDarkTheme(theme));
                 }
                 this.eventBus.emit(Events.THEME_CHANGED, theme);
             }

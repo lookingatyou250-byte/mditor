@@ -265,6 +265,14 @@ app.on('open-file', (event, filePath) => {
     }
 });
 
+const THEME_BG_COLORS = {
+    light: '#F4F1EA',
+    paper: '#FCFCFB',
+    sage: '#EDF2EC',
+    dark: '#21201C',
+    midnight: '#161B22'
+};
+
 // ========== 窗口创建 ==========
 function createWindow(filePathToOpen = null) {
     const win = new BrowserWindow({
@@ -275,7 +283,7 @@ function createWindow(filePathToOpen = null) {
         frame: false,  // 无边框窗口
         titleBarStyle: 'hidden',
         trafficLightPosition: { x: 14, y: 11 },  // macOS 红绿灯垂直居中于 38px 标题栏
-        backgroundColor: globalSettings.theme === 'dark' ? '#21201C' : '#F4F1EA',  // 匹配 Claude 羊皮纸/暖炭黑背景防止启动闪烁
+        backgroundColor: THEME_BG_COLORS[globalSettings.theme] || '#F4F1EA',  // 匹配当前主题背景防止启动闪烁
         webPreferences: {
             nodeIntegration: false,
             contextIsolation: true,
@@ -1113,7 +1121,7 @@ function setupApplicationMenu() {
                     click: () => sendMenuAction('toggle-focus')
                 },
                 {
-                    label: '切换亮色 / 暗色主题',
+                    label: '切换配色主题',
                     accelerator: 'CmdOrCtrl+Shift+D',
                     click: () => sendMenuAction('toggle-theme')
                 },
