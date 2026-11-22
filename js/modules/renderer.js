@@ -44,14 +44,16 @@ class Renderer {
                 return;
             }
 
-            // 1. 代码块 / Mermaid 源码一键复制
+            // 1. 代码块 / 代码全文 / 纯文本 / Mermaid 源码一键复制
             const copyBtn = e.target.closest('.code-copy-btn');
             if (copyBtn) {
                 e.preventDefault();
                 e.stopPropagation();
-                const container = copyBtn.closest('pre, .mermaid-block');
+                const container = copyBtn.closest('pre, .mermaid-block, .doc-code-view, .doc-plain-view');
                 const codeEl = container?.querySelector('code');
-                const defaultLabel = copyBtn.closest('.mermaid-block') ? '复制源码' : '复制';
+                const defaultLabel = copyBtn.classList.contains('doc-copy-btn')
+                    ? '复制全部'
+                    : (copyBtn.closest('.mermaid-block') ? '复制源码' : '复制');
                 if (codeEl) {
                     try {
                         await navigator.clipboard.writeText(codeEl.textContent || '');
@@ -228,12 +230,12 @@ class Renderer {
     }
 
     /**
-     * 代码高亮
+     * 代码高亮（同时作用于 Markdown 内嵌代码块与独立代码文件阅读视图）
      */
     _highlightCode() {
         if (typeof hljs === 'undefined') return;
 
-        this.contentEl.querySelectorAll('pre.code-block code').forEach(block => {
+        this.contentEl.querySelectorAll('pre.code-block code, pre.code-view-pre:not(.no-highlight) code').forEach(block => {
             hljs.highlightElement(block);
         });
     }

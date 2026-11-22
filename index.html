@@ -438,7 +438,7 @@
           <div class="settings-item">
             <div class="settings-item-header">
               <span class="settings-item-label">版本</span>
-              <span id="app-version" class="settings-item-value">v3.1.1</span>
+              <span id="app-version" class="settings-item-value">v4.0.0</span>
             </div>
             <button id="check-update-btn" class="settings-btn">检查更新</button>
           </div>
@@ -481,7 +481,7 @@
     </div>
 
     <!-- 隐藏的文件输入 -->
-    <input type="file" id="file-input" accept=".md,.markdown,.txt,.mkd,.mdx" hidden>
+    <input type="file" id="file-input" accept=".md,.markdown,.mdx,.mkd,.txt,.log,.js,.mjs,.cjs,.jsx,.ts,.tsx,.json,.py,.sh,.zsh,.css,.scss,.html,.xml,.yaml,.yml,.toml,.ini,.conf,.sql,.swift,.go,.rs,.java,.c,.cpp,.h,.rb,.php,.csv,.tsv,.diff,.patch" hidden>
   </div>
 
   <!-- 依赖库（完全本地离线） -->
@@ -493,6 +493,7 @@
   <!-- 应用模块 -->
   <script src="js/core/eventBus.js"></script>
   <script src="js/core/state.js"></script>
+  <script src="js/core/fileTypes.js"></script>
   <script src="js/modules/parser.js"></script>
   <script src="js/modules/renderer.js"></script>
   <script src="js/modules/outline.js"></script>

@@ -293,19 +293,44 @@ class MarkdownParser {
     }
 
     /**
-     * 解析 Markdown（支持 GFM 脚注、KaTeX 公式、Mermaid 图表与 Callout）
-     * @param {string} markdown - Markdown 文本
+     * 获取当前文档分类（Markdown / 代码 / CSV / 纯文本）
+     */
+    classifyDocument(fileName) {
+        if (!fileName || fileName === '欢迎' || fileName === '未命名') {
+            return { kind: 'markdown', lang: 'markdown', label: 'Markdown', ext: '.md' };
+        }
+        if (typeof window !== 'undefined' && window.MditorFileTypes?.classifyFile) {
+            return window.MditorFileTypes.classifyFile(fileName);
+        }
+        return { kind: 'markdown', lang: 'markdown', label: 'Markdown', ext: '.md' };
+    }
+
+    /**
+     * 解析文档（自动识别 Markdown / 代码 / 配置 / CSV / 纯文本）
+     * @param {string} content - 文档原始文本
+     * @param {string|null} fileName - 文件名或路径
      * @returns {string} HTML 字符串
      */
-    parse(markdown) {
-        if (!markdown) return '';
+    parse(content, fileName = null) {
+        if (!content) return '';
+
+        const info = this.classifyDocument(fileName);
+        if (info.kind === 'code') {
+            return this._renderCodeDocument(content, info);
+        }
+        if (info.kind === 'csv' || info.kind === 'tsv') {
+            return this._renderDelimitedTable(content, info);
+        }
+        if (info.kind === 'text') {
+            return this._renderPlainTextDocument(content, info);
+        }
 
         try {
             this._headingSlugCounts = new Map();
             this._taskItemIndex = 0;
 
             // 提取并处理 GFM 脚注 ([^id]: content)
-            const { cleanedMarkdown, footnotes } = this._extractFootnotes(markdown);
+            const { cleanedMarkdown, footnotes } = this._extractFootnotes(content);
 
             let html = marked.parse(cleanedMarkdown);
 
@@ -319,6 +344,194 @@ class MarkdownParser {
             console.error('Parse error:', error);
             return `<p class="parse-error">解析错误: ${error.message}</p>`;
         }
+    }
+
+    /**
+     * 渲染代码 / 配置文件视图（复用内置 highlight.js + 行号 + 大文件降级）
+     */
+    _renderCodeDocument(content, info) {
+        let displayContent = content;
+        let prettyFormatted = false;
+
+        // 对压缩成单行/极少行的 JSON (< 500 KB) 自动优雅缩进预览（不改动原文件）
+        if (info.lang === 'json' && content.length <= 512 * 1024) {
+            const rawLines = content.split(/\r?\n/);
+            if (rawLines.length <= 3 && content.trim().length > 160) {
+                try {
+                    const parsed = JSON.parse(content);
+                    displayContent = JSON.stringify(parsed, null, 2);
+                    prettyFormatted = true;
+                } catch {
+                    // JSONC 或非法 JSON 保持原样
+                }
+            }
+        }
+
+        const isLarge = displayContent.length > 1024 * 1024;
+        const lines = displayContent.split(/\r?\n/);
+        const lineCount = lines.length;
+        const lang = this._escapeHtml(info.lang || 'plaintext');
+        const label = this._escapeHtml(info.label || lang.toUpperCase());
+        const escapedCode = this._escapeHtml(displayContent);
+
+        let gutterHtml = '';
+        if (lineCount <= 12000) {
+            const parts = new Array(lineCount);
+            for (let i = 1; i <= lineCount; i++) {
+                parts[i - 1] = `<span class="code-line-num" id="code-line-${i}">${i}</span>`;
+            }
+            gutterHtml = `<div class="code-view-gutter" aria-hidden="true">${parts.join('')}</div>`;
+        }
+
+        const badges = [
+            `<span class="doc-meta-badge">${label}</span>`,
+            `<span class="doc-meta-info">${lineCount} 行</span>`
+        ];
+        if (prettyFormatted) {
+            badges.push(`<span class="doc-meta-pill">已自动格式化预览</span>`);
+        }
+        if (isLarge) {
+            badges.push(`<span class="doc-meta-pill">大文件 · 轻量模式</span>`);
+        }
+
+        const preClass = isLarge ? 'code-view-pre no-highlight' : 'code-view-pre';
+        return `<div class="doc-code-view" data-doc-kind="code" data-lang="${lang}">
+  <div class="doc-view-header">
+    <div class="doc-meta-group">${badges.join('')}</div>
+    <button class="code-copy-btn doc-copy-btn" type="button" title="复制全部内容" aria-label="复制全部">复制全部</button>
+  </div>
+  <div class="code-view-body">
+    ${gutterHtml}
+    <pre class="${preClass}" data-lang="${lang}"><code class="language-${lang}">${escapedCode}</code></pre>
+  </div>
+</div>`;
+    }
+
+    /**
+     * 渲染纯文本 / 日志视图（记事本风格：严格保留空格与换行，不按 Markdown 误解析）
+     */
+    _renderPlainTextDocument(content, info) {
+        const lineCount = content.split(/\r?\n/).length;
+        const label = this._escapeHtml(info.label || '纯文本');
+        const escaped = this._escapeHtml(content);
+
+        return `<div class="doc-plain-view" data-doc-kind="text">
+  <div class="doc-view-header">
+    <div class="doc-meta-group">
+      <span class="doc-meta-badge">${label}</span>
+      <span class="doc-meta-info">${lineCount} 行</span>
+    </div>
+    <button class="code-copy-btn doc-copy-btn" type="button" title="复制全部内容" aria-label="复制全部">复制全部</button>
+  </div>
+  <pre class="plain-view-body"><code>${escaped}</code></pre>
+</div>`;
+    }
+
+    /**
+     * 渲染 CSV / TSV 表格视图（零依赖 RFC-4180 解析器）
+     */
+    _renderDelimitedTable(content, info) {
+        const delimiter = info.kind === 'tsv' ? '\t' : ',';
+        const rows = this._parseDelimited(content, delimiter);
+        const totalRows = rows.length;
+        const maxDisplayRows = 3000;
+        const truncated = totalRows > maxDisplayRows;
+        const visibleRows = truncated ? rows.slice(0, maxDisplayRows) : rows;
+        const colCount = visibleRows.reduce((max, r) => Math.max(max, r.length), 0);
+
+        if (visibleRows.length === 0) {
+            return this._renderPlainTextDocument(content, info);
+        }
+
+        const headerRow = visibleRows[0];
+        const bodyRows = visibleRows.slice(1);
+
+        let theadCells = '<th class="csv-row-num">#</th>';
+        for (let c = 0; c < colCount; c++) {
+            theadCells += `<th>${this._escapeHtml(headerRow[c] || '')}</th>`;
+        }
+
+        const tbodyParts = new Array(bodyRows.length);
+        for (let r = 0; r < bodyRows.length; r++) {
+            const row = bodyRows[r];
+            let cells = `<td class="csv-row-num">${r + 1}</td>`;
+            for (let c = 0; c < colCount; c++) {
+                cells += `<td>${this._escapeHtml(row[c] || '')}</td>`;
+            }
+            tbodyParts[r] = `<tr>${cells}</tr>`;
+        }
+
+        const label = this._escapeHtml(info.label || 'CSV 表格');
+        const truncatePill = truncated
+            ? `<span class="doc-meta-pill">已预览前 ${maxDisplayRows} 行（共 ${totalRows} 行）</span>`
+            : '';
+
+        return `<div class="doc-table-view" data-doc-kind="${info.kind}">
+  <div class="doc-view-header">
+    <div class="doc-meta-group">
+      <span class="doc-meta-badge">${label}</span>
+      <span class="doc-meta-info">${Math.max(0, totalRows - 1)} 行 · ${colCount} 列</span>
+      ${truncatePill}
+    </div>
+  </div>
+  <div class="doc-table-scroll">
+    <table class="csv-table">
+      <thead><tr>${theadCells}</tr></thead>
+      <tbody>${tbodyParts.join('')}</tbody>
+    </table>
+  </div>
+</div>`;
+    }
+
+    /**
+     * 轻量 RFC-4180 CSV/TSV 解析器
+     */
+    _parseDelimited(text, delimiter) {
+        const rows = [];
+        let row = [];
+        let field = '';
+        let inQuotes = false;
+        const len = text.length;
+
+        for (let i = 0; i < len; i++) {
+            const ch = text[i];
+            if (inQuotes) {
+                if (ch === '"') {
+                    if (i + 1 < len && text[i + 1] === '"') {
+                        field += '"';
+                        i++;
+                    } else {
+                        inQuotes = false;
+                    }
+                } else {
+                    field += ch;
+                }
+            } else {
+                if (ch === '"' && field.length === 0) {
+                    inQuotes = true;
+                } else if (ch === delimiter) {
+                    row.push(field);
+                    field = '';
+                } else if (ch === '\r' || ch === '\n') {
+                    if (ch === '\r' && i + 1 < len && text[i + 1] === '\n') i++;
+                    row.push(field);
+                    if (row.length > 1 || row[0] !== '') {
+                        rows.push(row);
+                    }
+                    row = [];
+                    field = '';
+                } else {
+                    field += ch;
+                }
+            }
+        }
+        if (field.length > 0 || row.length > 0) {
+            row.push(field);
+            if (row.length > 1 || row[0] !== '') {
+                rows.push(row);
+            }
+        }
+        return rows;
     }
 
     /**
@@ -432,16 +645,25 @@ class MarkdownParser {
     }
 
     /**
-     * 提取大纲
-     * @param {string} markdown - Markdown 文本
-     * @returns {Array} 标题数组
+     * 提取大纲（Markdown 提取标题；代码/YAML/JSON 提取轻量顶层结构符号）
+     * @param {string} content - 文档文本
+     * @param {string|null} fileName - 文件名
+     * @returns {Array} 大纲数组
      */
-    extractOutline(markdown) {
-        if (!markdown) return [];
+    extractOutline(content, fileName = null) {
+        if (!content) return [];
+
+        const info = this.classifyDocument(fileName);
+        if (info.kind === 'code') {
+            return this._extractCodeOutline(content, info.lang);
+        }
+        if (info.kind !== 'markdown') {
+            return [];
+        }
 
         const outline = [];
         const slugCounts = new Map();
-        const lines = markdown.split('\n');
+        const lines = content.split('\n');
         let inCodeBlock = false;
 
         lines.forEach((line, index) => {
@@ -475,6 +697,82 @@ class MarkdownParser {
                 });
             }
         });
+
+        return outline;
+    }
+
+    /**
+     * 轻量代码结构大纲提取（零 AST 依赖，按常见函数/类/顶层键快速索引）
+     */
+    _extractCodeOutline(content, lang) {
+        if (content.length > 1024 * 1024) return [];
+        const outline = [];
+        const lines = content.split(/\r?\n/);
+        const maxItems = 200;
+
+        for (let i = 0; i < lines.length && outline.length < maxItems; i++) {
+            const line = lines[i];
+            const lineNum = i + 1;
+            let match = null;
+            let level = 1;
+            let text = '';
+
+            if (lang === 'javascript' || lang === 'typescript') {
+                if ((match = line.match(/^\s*(?:export\s+)?(?:default\s+)?class\s+([A-Za-z0-9_$]+)/))) {
+                    level = 1;
+                    text = `class ${match[1]}`;
+                } else if ((match = line.match(/^\s*(?:export\s+)?(?:async\s+)?function\s*\*?\s*([A-Za-z0-9_$]+)\s*\(/))) {
+                    level = 2;
+                    text = `${match[1]}()`;
+                } else if ((match = line.match(/^(?:export\s+)?(?:const|let|var)\s+([A-Za-z0-9_$]+)\s*=\s*(?:async\s*)?(?:\([^)]*\)|[A-Za-z0-9_$]+)\s*=>/))) {
+                    level = 2;
+                    text = `${match[1]}()`;
+                } else if ((match = line.match(/^    (?:async\s+)?([A-Za-z_][A-Za-z0-9_$]*)\s*\([^)]*\)\s*\{/)) && !['if', 'for', 'while', 'switch', 'catch'].includes(match[1])) {
+                    level = 2;
+                    text = `${match[1]}()`;
+                }
+            } else if (lang === 'python') {
+                if ((match = line.match(/^class\s+([A-Za-z0-9_]+)/))) {
+                    level = 1;
+                    text = `class ${match[1]}`;
+                } else if ((match = line.match(/^(\s*)(?:async\s+)?def\s+([A-Za-z0-9_]+)\s*\(/))) {
+                    level = match[1].length > 0 ? 2 : 1;
+                    text = `def ${match[2]}()`;
+                }
+            } else if (lang === 'go' || lang === 'rust' || lang === 'swift') {
+                if ((match = line.match(/^\s*(?:pub\s+|public\s+|private\s+)?(?:struct|class|enum|interface|protocol|trait|impl)\s+([A-Za-z0-9_]+)/))) {
+                    level = 1;
+                    text = match[1];
+                } else if ((match = line.match(/^\s*(?:pub\s+|public\s+|private\s+)?(?:async\s+)?(?:func|fn)\s+(?:\([^)]*\)\s*)?([A-Za-z0-9_]+)/))) {
+                    level = 2;
+                    text = `${match[1]}()`;
+                }
+            } else if (lang === 'yaml') {
+                if ((match = line.match(/^([A-Za-z0-9_.-]+):\s*(?:#.*)?$/))) {
+                    level = 1;
+                    text = match[1];
+                }
+            } else if (lang === 'json') {
+                if ((match = line.match(/^  "([^"]+)"\s*:/))) {
+                    level = 1;
+                    text = match[1];
+                }
+            } else if (lang === 'bash' || lang === 'shell') {
+                if ((match = line.match(/^(?:function\s+)?([A-Za-z_][A-Za-z0-9_-]*)\s*\(\)\s*\{/))) {
+                    level = 1;
+                    text = `${match[1]}()`;
+                }
+            }
+
+            if (text) {
+                outline.push({
+                    level,
+                    text,
+                    id: `code-line-${lineNum}`,
+                    line: lineNum
+                });
+            }
+        }
 
         return outline;
     }

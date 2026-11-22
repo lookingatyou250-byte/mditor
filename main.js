@@ -4,6 +4,37 @@ const fs = require('fs');
 const os = require('os');
 const { fileURLToPath, pathToFileURL } = require('url');
 const { execFile } = require('child_process');
+const fileTypes = require('./js/core/fileTypes');
+
+const MAX_TEXT_FILE_BYTES = 20 * 1024 * 1024; // 20 MB 防卡死保护
+
+/**
+ * 安全读取纯文本 / Markdown / 代码 / 配置 / CSV 文件，自动拦截二进制文件
+ */
+function readTextFileSafe(filePath) {
+    if (!filePath || !fs.existsSync(filePath)) {
+        return { ok: false, error: '文件不存在' };
+    }
+    if (fileTypes.isKnownBinary(filePath)) {
+        return { ok: false, error: '不支持打开二进制或非文本文件' };
+    }
+    try {
+        const stat = fs.statSync(filePath);
+        if (!stat.isFile()) {
+            return { ok: false, error: '目标不是普通文件' };
+        }
+        if (stat.size > MAX_TEXT_FILE_BYTES) {
+            return { ok: false, error: '文件超过 20 MB，为保持轻量流畅已跳过打开' };
+        }
+        const buf = fs.readFileSync(filePath);
+        if (fileTypes.isBinaryBuffer(buf)) {
+            return { ok: false, error: '检测到二进制内容，不支持打开此类文件' };
+        }
+        return { ok: true, content: buf.toString('utf-8') };
+    } catch (e) {
+        return { ok: false, error: e.message };
+    }
+}
 
 // ========== 单实例模式 ==========
 const gotTheLock = app.requestSingleInstanceLock();
@@ -199,22 +230,24 @@ function openFileInApp(filePath) {
         if (win.isDestroyed()) continue;
         const state = windowStates.get(win.webContents.id);
         if (state && !state.filePath && !state.pendingFile) {
-            try {
-                const content = fs.readFileSync(normalized, 'utf-8');
-                state.filePath = normalized;
-                app.addRecentDocument(normalized);
-                watchWindowFile(win, normalized);
-                win.webContents.send('file-opened', {
-                    content,
-                    fileName: path.basename(normalized),
-                    filePath: normalized
-                });
+            const readRes = readTextFileSafe(normalized);
+            if (!readRes.ok) {
                 if (win.isMinimized()) win.restore();
                 win.focus();
+                win.webContents.send('file-opened', { error: readRes.error });
                 return;
-            } catch (e) {
-                console.error('Failed to open file in existing window:', e);
             }
+            state.filePath = normalized;
+            app.addRecentDocument(normalized);
+            watchWindowFile(win, normalized);
+            win.webContents.send('file-opened', {
+                content: readRes.content,
+                fileName: path.basename(normalized),
+                filePath: normalized
+            });
+            if (win.isMinimized()) win.restore();
+            win.focus();
+            return;
         }
     }
 
@@ -342,53 +375,54 @@ ipcMain.handle('get-initial-file', async (event) => {
     const win = BrowserWindow.fromWebContents(event.sender);
     const state = windowStates.get(event.sender.id);
     if (state && state.pendingFile && fs.existsSync(state.pendingFile)) {
-        try {
-            const content = fs.readFileSync(state.pendingFile, 'utf-8');
-            const result = {
-                content,
-                fileName: path.basename(state.pendingFile),
-                filePath: state.pendingFile
-            };
-            state.filePath = state.pendingFile;
-            state.pendingFile = null;  // 消费一次
-            app.addRecentDocument(state.filePath);
-            watchWindowFile(win, state.filePath);
-            return result;
-        } catch (e) {
-            console.error('Failed to read initial file:', e);
-            return null;
+        const target = state.pendingFile;
+        state.pendingFile = null;  // 消费一次
+        const readRes = readTextFileSafe(target);
+        if (!readRes.ok) {
+            state.filePath = null;
+            return { error: readRes.error };
         }
+        state.filePath = target;
+        app.addRecentDocument(state.filePath);
+        watchWindowFile(win, state.filePath);
+        return {
+            content: readRes.content,
+            fileName: path.basename(target),
+            filePath: target
+        };
     }
     return null;
 });
 
-// 打开文件对话框
+// 打开文件对话框（支持 Markdown、代码、配置、日志、CSV 等所有纯文本）
 ipcMain.handle('open-file-dialog', async (event) => {
     const win = BrowserWindow.fromWebContents(event.sender);
     const result = await dialog.showOpenDialog(win, {
         properties: ['openFile'],
         filters: [
-            { name: 'Markdown', extensions: ['md', 'markdown', 'txt', 'mkd', 'mdx'] }
+            { name: '所有文本与代码', extensions: fileTypes.getAllSupportedExtensions() },
+            { name: 'Markdown 文档', extensions: ['md', 'markdown', 'mdx', 'mkd'] },
+            { name: '代码与配置', extensions: ['js', 'ts', 'jsx', 'tsx', 'json', 'py', 'sh', 'css', 'html', 'yml', 'yaml', 'toml', 'sql', 'swift', 'go', 'rs'] },
+            { name: '纯文本 / 日志 / 表格', extensions: ['txt', 'log', 'csv', 'tsv', 'ini', 'conf', 'env'] },
+            { name: '所有文件', extensions: ['*'] }
         ]
     });
 
     if (!result.canceled && result.filePaths.length > 0) {
         const filePath = result.filePaths[0];
+        const readRes = readTextFileSafe(filePath);
+        if (!readRes.ok) {
+            return { error: readRes.error };
+        }
         const state = windowStates.get(event.sender.id);
         if (state) state.filePath = filePath;
-
-        try {
-            const content = fs.readFileSync(filePath, 'utf-8');
-            app.addRecentDocument(filePath);
-            watchWindowFile(win, filePath);
-            return {
-                content,
-                fileName: path.basename(filePath),
-                filePath
-            };
-        } catch (e) {
-            return { error: e.message };
-        }
+        app.addRecentDocument(filePath);
+        watchWindowFile(win, filePath);
+        return {
+            content: readRes.content,
+            fileName: path.basename(filePath),
+            filePath
+        };
     }
     return null;
 });
@@ -422,13 +456,12 @@ ipcMain.handle('stat-path', async (_event, targetPath) => {
     }
 });
 
-// 递归列出指定目录下的 Markdown 文件（用于 Cmd/Ctrl+P 快速跳转）
+// 递归列出指定目录下的 Markdown 与纯文本/代码文件（用于 Cmd/Ctrl+P 快速跳转）
 ipcMain.handle('list-markdown-files', async (_event, rootDir) => {
     if (!rootDir || !fs.existsSync(rootDir)) return [];
-    const validExts = new Set(['.md', '.markdown', '.txt', '.mkd', '.mdx']);
-    const ignoredDirs = new Set(['.git', 'node_modules', 'dist', 'build', '.next', '.cache', '.obsidian', '.claude']);
+    const ignoredDirs = new Set(['.git', 'node_modules', 'dist', 'build', '.next', '.cache', '.obsidian', '.claude', '__pycache__', '.venv', 'venv', 'target']);
     const results = [];
-    const maxFiles = 500;
+    const maxFiles = 600;
     const maxDepth = 4;
 
     function walk(dir, depth) {
@@ -441,15 +474,14 @@ ipcMain.handle('list-markdown-files', async (_event, rootDir) => {
         }
         for (const entry of entries) {
             if (results.length >= maxFiles) break;
-            if (entry.name.startsWith('.')) continue;
+            if (entry.name.startsWith('.') && entry.name !== '.env' && entry.name !== '.gitignore') continue;
             const fullPath = path.join(dir, entry.name);
             if (entry.isDirectory()) {
                 if (!ignoredDirs.has(entry.name)) {
                     walk(fullPath, depth + 1);
                 }
             } else if (entry.isFile()) {
-                const ext = path.extname(entry.name).toLowerCase();
-                if (validExts.has(ext)) {
+                if (fileTypes.isSupportedTextFile(entry.name)) {
                     results.push({
                         name: entry.name,
                         path: fullPath,
@@ -646,33 +678,29 @@ ipcMain.handle('open-local-link', async (event, { href, baseDir, openInNewWindow
         return { ok: true, kind: 'directory', folderPath: resolvedPath };
     }
 
-    const ext = path.extname(resolvedPath).toLowerCase();
-    const mdExts = new Set(['.md', '.markdown', '.txt', '.mkd', '.mdx']);
-
-    if (mdExts.has(ext)) {
+    if (fileTypes.isSupportedTextFile(resolvedPath)) {
         if (openInNewWindow) {
             createWindow(resolvedPath);
             return { ok: true, kind: 'new-window', filePath: resolvedPath };
         }
-        try {
-            const content = fs.readFileSync(resolvedPath, 'utf-8');
-            if (state) state.filePath = resolvedPath;
-            app.addRecentDocument(resolvedPath);
-            watchWindowFile(win, resolvedPath);
-            return {
-                ok: true,
-                kind: 'markdown',
-                content,
-                fileName: path.basename(resolvedPath),
-                filePath: resolvedPath,
-                hash: hash ? decodeURIComponent(hash) : ''
-            };
-        } catch (e) {
-            return { ok: false, error: `读取文件失败: ${e.message}` };
+        const readRes = readTextFileSafe(resolvedPath);
+        if (!readRes.ok) {
+            return { ok: false, error: readRes.error };
         }
+        if (state) state.filePath = resolvedPath;
+        app.addRecentDocument(resolvedPath);
+        watchWindowFile(win, resolvedPath);
+        return {
+            ok: true,
+            kind: 'markdown',
+            content: readRes.content,
+            fileName: path.basename(resolvedPath),
+            filePath: resolvedPath,
+            hash: hash ? decodeURIComponent(hash) : ''
+        };
     }
 
-    // 非 Markdown 文件（如 PDF / 图片 / DOCX 等）交由系统默认应用安全打开
+    // 非文本文件（如 PDF / 图片 / DOCX 等）交由系统默认应用安全打开
     const errMsg = await shell.openPath(resolvedPath);
     if (errMsg) {
         return { ok: false, error: `无法打开文件: ${errMsg}` };
@@ -826,21 +854,20 @@ ipcMain.handle('show-in-folder', async (event, filePath) => {
 
 // 读取文件内容（用于文件树点击打开）
 ipcMain.handle('read-file', async (event, filePath) => {
-    try {
-        const win = BrowserWindow.fromWebContents(event.sender);
-        const content = fs.readFileSync(filePath, 'utf-8');
-        const state = windowStates.get(event.sender.id);
-        if (state) state.filePath = filePath;
-        app.addRecentDocument(filePath);
-        watchWindowFile(win, filePath);
-        return {
-            content,
-            fileName: path.basename(filePath),
-            filePath
-        };
-    } catch (e) {
-        return { error: e.message };
+    const win = BrowserWindow.fromWebContents(event.sender);
+    const readRes = readTextFileSafe(filePath);
+    if (!readRes.ok) {
+        return { error: readRes.error };
     }
+    const state = windowStates.get(event.sender.id);
+    if (state) state.filePath = filePath;
+    app.addRecentDocument(filePath);
+    watchWindowFile(win, filePath);
+    return {
+        content: readRes.content,
+        fileName: path.basename(filePath),
+        filePath
+    };
 });
 
 // 获取当前文件所在目录

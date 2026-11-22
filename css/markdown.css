@@ -631,6 +631,197 @@ details[open] summary {
 }
 
 /* ----------------------
+   v4.0 通用文本 / 代码 / CSV 表格阅读视图
+   ---------------------- */
+.content-area > .doc-code-view,
+.content-area > .doc-plain-view,
+.content-area > .doc-table-view {
+    max-width: min(1040px, 100% - 48px);
+    padding-right: 40px;
+}
+
+.doc-view-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 0 2px 12px;
+    margin-bottom: 14px;
+    border-bottom: 1px solid var(--color-border);
+}
+
+.doc-meta-group {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.doc-meta-badge {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    color: var(--color-accent);
+    background: var(--color-accent-soft);
+    padding: 2px 8px;
+    border-radius: 5px;
+}
+
+.doc-meta-info {
+    font-size: 12px;
+    color: var(--text-tertiary);
+    font-family: var(--font-mono);
+}
+
+.doc-meta-pill {
+    font-size: 11px;
+    color: var(--text-secondary);
+    background: var(--bg-sidebar);
+    border: 1px solid var(--color-border);
+    padding: 2px 8px;
+    border-radius: 999px;
+}
+
+.doc-copy-btn {
+    position: static;
+    opacity: 0.85;
+}
+
+.doc-copy-btn:hover {
+    opacity: 1;
+}
+
+/* 代码阅读区（暖亚麻色代码纸 + 行号槽） */
+.code-view-body {
+    display: flex;
+    align-items: stretch;
+    background: var(--bg-code);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    overflow-x: auto;
+}
+
+.code-view-gutter {
+    display: flex;
+    flex-direction: column;
+    padding: 16px 12px 16px 14px;
+    border-right: 1px solid var(--color-border);
+    background: var(--bg-elevated);
+    text-align: right;
+    user-select: none;
+    flex-shrink: 0;
+}
+
+.code-line-num {
+    font-family: var(--font-mono);
+    font-size: 13.5px;
+    line-height: 1.65;
+    color: var(--text-tertiary);
+    min-width: 28px;
+    padding: 0 2px;
+    border-radius: 3px;
+}
+
+.code-view-pre {
+    flex: 1;
+    margin: 0 !important;
+    padding: 16px 20px !important;
+    border: none !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    overflow-x: visible !important;
+    font-family: var(--font-mono);
+    font-size: 13.5px;
+    line-height: 1.65;
+}
+
+.code-view-pre::after {
+    display: none !important;
+}
+
+.code-view-pre code {
+    font-family: var(--font-mono);
+    font-size: 13.5px;
+    line-height: 1.65;
+    tab-size: 4;
+}
+
+/* 纯文本 / 日志阅读区（极简记事本纸感，保留原样空格与换行） */
+.plain-view-body {
+    margin: 0 !important;
+    padding: 20px 24px !important;
+    background: var(--bg-card) !important;
+    border: 1px solid var(--color-border) !important;
+    border-radius: var(--radius-md) !important;
+    overflow-x: auto;
+}
+
+.plain-view-body::after {
+    display: none !important;
+}
+
+.plain-view-body code {
+    display: block;
+    font-family: var(--reader-font-family);
+    font-size: var(--reader-font-size);
+    line-height: 1.8;
+    color: var(--text-primary);
+    white-space: pre-wrap;
+    word-break: break-word;
+    tab-size: 4;
+}
+
+/* CSV / TSV 可滚动表格视图 */
+.doc-table-scroll {
+    overflow: auto;
+    max-height: calc(100vh - 170px);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--bg-card);
+}
+
+.csv-table {
+    margin-bottom: 0;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: 13.5px;
+}
+
+.csv-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: var(--bg-sidebar);
+    border-top: none;
+    border-left: none;
+    border-right: 1px solid var(--color-border);
+    border-bottom: 1px solid var(--color-border);
+    white-space: nowrap;
+}
+
+.csv-table tbody td {
+    border-top: none;
+    border-left: none;
+    border-right: 1px solid var(--color-border);
+    border-bottom: 1px solid var(--color-border);
+    white-space: pre-wrap;
+    max-width: 360px;
+    word-break: break-word;
+}
+
+.csv-table .csv-row-num {
+    width: 44px;
+    min-width: 44px;
+    text-align: right;
+    color: var(--text-tertiary);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    background: var(--bg-elevated);
+    user-select: none;
+}
+
+/* ----------------------
    Print & PDF Export (@media print)
    ---------------------- */
 @media print {

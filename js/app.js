@@ -387,7 +387,13 @@ class App {
 
         // 主进程通过 Finder open-file 推送打开文件
         if (window.electronAPI?.onFileOpened) {
-            window.electronAPI.onFileOpened(({ content, fileName, filePath }) => {
+            window.electronAPI.onFileOpened((data) => {
+                if (!data) return;
+                if (data.error) {
+                    this._showToast(data.error, 'error');
+                    return;
+                }
+                const { content, fileName, filePath } = data;
                 if (filePath) {
                     this.currentFilePath = filePath;
                     this.filetreeRoot = null;
@@ -1094,8 +1100,9 @@ class App {
         if (window.electronAPI?.getInitialFile) {
             try {
                 const data = await window.electronAPI.getInitialFile();
-                // 检查是否有文件数据（content 可能是空字符串，所以用 !== undefined）
-                if (data && data.content !== undefined) {
+                if (data && data.error) {
+                    this._showToast(data.error, 'error');
+                } else if (data && data.content !== undefined) {
                     this.currentFilePath = data.filePath;
                     this._onFileLoaded(data.content, data.fileName);
                     this._loadFileTree();
@@ -1181,9 +1188,10 @@ class App {
         this.aiStageDrawerOpen = false;
         this._renderStagedQuotesUI();
 
-        // 解析并渲染
-        const html = this.parser.parse(content);
-        const outline = this.parser.extractOutline(content);
+        // 解析并渲染（自动识别 Markdown / 代码 / 配置 / CSV / 纯文本）
+        const docName = fileName || this.currentFilePath;
+        const html = this.parser.parse(content, docName);
+        const outline = this.parser.extractOutline(content, docName);
 
         this.eventBus.emit(Events.CONTENT_PARSED, { html, outline });
         this.eventBus.emit(Events.OUTLINE_UPDATED, outline);
@@ -1312,6 +1320,10 @@ class App {
     async _openFile() {
         if (window.electronAPI?.openFileDialog) {
             const result = await window.electronAPI.openFileDialog();
+            if (result && result.error) {
+                this._showToast(result.error, 'error');
+                return;
+            }
             if (result && result.content !== undefined) {
                 this.currentFilePath = result.filePath;
                 this.filetreeRoot = null;
@@ -1348,8 +1360,14 @@ class App {
 
         if (window.electronAPI?.readDirectory) {
             const items = await window.electronAPI.readDirectory(folderPath);
-            const mdFiles = items.filter(it => !it.isDirectory && ['.md', '.markdown', '.txt', '.mkd', '.mdx'].includes(it.ext));
-            const preferred = mdFiles.find(it => /^readme\.md$/i.test(it.name)) || mdFiles[0];
+            const textFiles = items.filter(it => !it.isDirectory && (
+                window.MditorFileTypes?.isSupportedTextFile
+                    ? window.MditorFileTypes.isSupportedTextFile(it.name)
+                    : ['.md', '.markdown', '.txt', '.mkd', '.mdx'].includes(it.ext)
+            ));
+            const preferred = textFiles.find(it => /^readme\.md$/i.test(it.name))
+                || textFiles.find(it => it.ext === '.md')
+                || textFiles[0];
             if (preferred && window.electronAPI?.readFile) {
                 const data = await window.electronAPI.readFile(preferred.path);
                 if (data && data.content !== undefined) {
@@ -1572,8 +1590,11 @@ class App {
      */
     _renderFileTreeItems(items, container, depth) {
         items.forEach(item => {
-            // 只显示 Markdown 文件和文件夹
-            if (!item.isDirectory && !['.md', '.markdown', '.txt'].includes(item.ext)) {
+            // 只显示文件夹与支持的纯文本/Markdown/代码/配置/CSV 文件（自动隐藏二进制文件）
+            const supported = window.MditorFileTypes?.isSupportedTextFile
+                ? window.MditorFileTypes.isSupportedTextFile(item.name)
+                : ['.md', '.markdown', '.txt'].includes(item.ext);
+            if (!item.isDirectory && !supported) {
                 return;
             }
 
@@ -1753,11 +1774,13 @@ class App {
                         this.hasUnsavedChanges = true;
                         this._updateSaveIndicator();
                         this._updateWordCount(content);
-                        const outline = this.parser.extractOutline(content);
+                        const docName = this.elements.fileName?.textContent || this.currentFilePath;
+                        const outline = this.parser.extractOutline(content, docName);
                         this.eventBus.emit(Events.OUTLINE_UPDATED, outline);
 
-                        // 检测斜杠命令（在 onChange 中检测更可靠）
-                        if (!this.slashMenuVisible) {
+                        // 仅在 Markdown 文档中触发 // 斜杠命令（避免在 JS/C/Swift/Go 写 // 注释时误弹出）
+                        const docKind = this.parser.classifyDocument(docName).kind;
+                        if (docKind === 'markdown' && !this.slashMenuVisible) {
                             this._checkSlashTrigger();
                         }
 
@@ -1800,11 +1823,12 @@ class App {
 
             // 如果有文件打开但内容为空，显示空白而不是欢迎提示
             this.parser.setBasePath(this.currentFilePath);
+            const docName = this.elements.fileName?.textContent || this.currentFilePath;
             const hasContent = this.currentContent && this.currentContent.trim();
             const html = hasContent
-                ? this.parser.parse(this.currentContent)
+                ? this.parser.parse(this.currentContent, docName)
                 : (this.currentFilePath ? ' ' : '');  // 有文件但空内容，传递空格避免显示欢迎提示
-            const outline = this.parser.extractOutline(this.currentContent);
+            const outline = this.parser.extractOutline(this.currentContent, docName);
             this.eventBus.emit(Events.CONTENT_PARSED, { html, outline });
             this.eventBus.emit(Events.OUTLINE_UPDATED, outline);
 
@@ -2009,12 +2033,12 @@ class App {
         const mod = this.isMac ? '⌘' : 'Ctrl+';
         const shiftMod = this.isMac ? '⇧⌘' : 'Ctrl+Shift+';
         const altMod = this.isMac ? '⌥⌘' : 'Ctrl+Alt+';
-        const demoContent = `# 欢迎使用 mditor
+        const demoContent = `# 欢迎使用 mditor 4.0
 
-一个极简、原生的本地 Markdown 阅读器与编辑器，灵感来自 Typora 与 Obsidian[^1]。
+一个极简、轻盈的本地纯文本与 Markdown 阅读器 — 支持 \`.md\`、代码（\`.js\` / \`.ts\` / \`.py\` / \`.json\` / \`.yml\` 等 36 种语言）、日志（\`.txt\` / \`.log\`）与表格（\`.csv\` / \`.tsv\`）[^1]。
 
 > [!TIP] 极简阅读 · 一键联动 AI
-> **用鼠标选中任意一段文字**，即可一键高亮，或点「**引用**」（\`${mod}L\`）写下意见——可以**先点「暂存」攒几条一起发**，也可以直接「**发给 AI**」自动带上下文打开新对话，按回车即发。
+> **用鼠标选中任意一段文字或代码**，即可一键高亮，或点「**引用**」（\`${mod}L\`）写下意见——可以**先点「暂存」攒几条一起发**，也可以直接「**发给 AI**」自动带上下文打开新对话，按回车即发。
 
 ---
 
@@ -2030,15 +2054,15 @@ $$
 
 \`\`\`mermaid
 graph LR
-    A[打开 .md 文档] --> B[划词高亮 / 暂存引用]
+    A[打开 .md / 代码 / 日志 / CSV] --> B[划词高亮 / 按文件暂存引用]
     B --> C[一键发给 AI 修改]
     C --> D[自动刷新 · 橘色边线标出改动]
 \`\`\`
 
-### 2. 交互式任务列表与标记
+### 2. 极简无负担的通用纯文本体验
 
-- [x] 原生适配 Apple Silicon (M 系列) 与 macOS 菜单栏 / 红绿灯布局
-- [x] 支持 ==重点内容高亮==、代码块一键复制、外部修改自动热重载与改动边线提示
+- [x] **Markdown 沉浸阅读**：公式、流程图、提示框、脚注、划词高亮、一键导出 PDF
+- [x] **代码 / 配置 / 日志 / CSV 顺手即看**：36 种语言暖色高亮、行号与符号大纲、CSV 表格视图、拒绝二进制文件不膨胀
 - [ ] 点击左侧复选框，即使在阅读模式下也可直接勾选并自动保存
 
 ---
@@ -2047,9 +2071,9 @@ graph LR
 
 | 快捷键 | 功能 |
 |--------|------|
-| \`${mod}L\` / \`${shiftMod}L\` | 引用选中文字发给 AI / 发送当前文档全部暂存引用 |
+| \`${mod}L\` / \`${shiftMod}L\` | 引用选中文字或代码发给 AI / 发送当前文档全部暂存引用 |
 | \`${mod}O\` / \`${shiftMod}O\` | 打开文件 / 打开文件夹工作区 |
-| \`${mod}P\` | 快速搜索并跳转目录内的 Markdown 文档 |
+| \`${mod}P\` | 快速搜索并跳转目录内的文本与代码文档 |
 | \`${mod}E\` | 无缝切换阅读 / 编辑模式（自动同步滚动位置） |
 | \`${mod}\\\` | 切换侧边栏（隐藏 / 大纲目录 / 文件树） |
 | \`${mod}F\` | 页内关键词查找 |
@@ -4679,7 +4703,8 @@ graph LR
             this._updateWordCount(content);
             this.parser.setBasePath(this.currentFilePath);
 
-            const outline = this.parser.extractOutline(content);
+            const docName = fileName || this.elements.fileName?.textContent || this.currentFilePath;
+            const outline = this.parser.extractOutline(content, docName);
             this.eventBus.emit(Events.OUTLINE_UPDATED, outline);
 
             if (this.isEditMode && this.editor) {
@@ -4696,7 +4721,7 @@ graph LR
                 this._showToast('检测到外部更新，已自动刷新', 'info');
             } else {
                 const oldBlockFingerprints = this._captureRenderedBlockFingerprints();
-                const html = content.trim() ? this.parser.parse(content) : ' ';
+                const html = content.trim() ? this.parser.parse(content, docName) : ' ';
                 this.eventBus.emit(Events.CONTENT_PARSED, { html, outline });
                 requestAnimationFrame(() => {
                     this.renderer.setScrollPercentage(readRatio);
@@ -5078,8 +5103,20 @@ graph LR
         const quote = range.toString().trim();
         if (!quote) return null;
 
-        const heading = this._findNearestHeadingForNode(range.startContainer);
-        const location = heading ? `章节：${heading}` : fileName;
+        const docInfo = this.parser.classifyDocument(fileName || filePath);
+        let heading = '';
+        let lineLabel = null;
+        let location = fileName;
+
+        if (docInfo.kind === 'code' || docInfo.kind === 'text') {
+            lineLabel = this._findLineLabelForSnippet(quote);
+            location = lineLabel ? `${docInfo.label} · ${lineLabel}` : docInfo.label;
+        } else if (docInfo.kind === 'csv' || docInfo.kind === 'tsv') {
+            location = docInfo.label;
+        } else {
+            heading = this._findNearestHeadingForNode(range.startContainer);
+            location = heading ? `章节：${heading}` : fileName;
+        }
 
         let rect = range.getBoundingClientRect();
         if (!rect || (rect.width === 0 && rect.height === 0)) {
@@ -5092,7 +5129,20 @@ graph LR
             };
         }
 
-        return { quote, location, heading, lineLabel: null, filePath, fileName, rect };
+        return { quote, location, heading, lineLabel, filePath, fileName, rect };
+    }
+
+    /**
+     * 在代码/纯文本阅读模式下反查所选片段的行号区间（如 "第 42-55 行"）
+     */
+    _findLineLabelForSnippet(snippet) {
+        if (!snippet || !this.currentContent) return null;
+        const idx = this.currentContent.indexOf(snippet);
+        if (idx === -1) return null;
+        const startLine = this.currentContent.slice(0, idx).split('\n').length;
+        const lineSpan = snippet.split('\n').length - 1;
+        const endLine = startLine + lineSpan;
+        return startLine === endLine ? `第 ${startLine} 行` : `第 ${startLine}-${endLine} 行`;
     }
 
     _findNearestHeadingForNode(node) {

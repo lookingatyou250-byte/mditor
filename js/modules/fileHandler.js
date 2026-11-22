@@ -114,10 +114,18 @@ class FileHandler {
             }
         }
 
-        // 验证文件类型
-        if (!this._isMarkdownFile(file)) {
+        // 拦截已知二进制 / 图片 / Office / 压缩包文件
+        if (window.MditorFileTypes?.isKnownBinary?.(file.name)) {
             this.eventBus.emit(Events.FILE_ERROR, {
-                message: '请选择 Markdown 文件 (.md, .markdown, .txt, .mkd, .mdx) 或文件夹'
+                message: '不支持打开图片、PDF、Office 或二进制文件'
+            });
+            return;
+        }
+
+        // 防卡死：限制单文件最大 20 MB
+        if (file.size && file.size > 20 * 1024 * 1024) {
+            this.eventBus.emit(Events.FILE_ERROR, {
+                message: '文件超过 20 MB，为保持轻量流畅已跳过打开'
             });
             return;
         }
@@ -130,6 +138,15 @@ class FileHandler {
 
         reader.onload = (e) => {
             const content = e.target.result;
+
+            // 二进制内容嗅探兜底（防止无后缀或未知后缀的二进制文件乱码）
+            if (window.MditorFileTypes?.isBinaryString?.(content)) {
+                this.state.set('ui.isLoading', false);
+                this.eventBus.emit(Events.FILE_ERROR, {
+                    message: '检测到二进制内容，不支持打开此类文件'
+                });
+                return;
+            }
 
             this.state.batch({
                 'document.raw': content,
@@ -155,9 +172,12 @@ class FileHandler {
     }
 
     /**
-     * 检查是否为 Markdown 文件
+     * 检查是否为可打开的纯文本/代码/Markdown 文件
      */
     _isMarkdownFile(file) {
+        if (window.MditorFileTypes?.isKnownBinary) {
+            return !window.MditorFileTypes.isKnownBinary(file.name);
+        }
         const validExtensions = ['.md', '.markdown', '.txt', '.mkd', '.mdx'];
         const fileName = file.name.toLowerCase();
         return validExtensions.some(ext => fileName.endsWith(ext));
