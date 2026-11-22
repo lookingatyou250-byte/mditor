@@ -2,6 +2,12 @@
 
 All notable changes to **mditor** are documented in this file.
 
+## [3.1.1] - 2026-11-22
+
+### Fixed
+- 修复从编辑模式打开新文档时阅读区与编辑区同时并排显示（出现双栏与双滚动条）的 Bug，严格保证两区互斥显示。
+- 修复 macOS 安装包 `Info.plist` 中 `ElectronAsarIntegrity` 哈希校验与打包后 `app.asar` 不一致导致启动卡死的问题。
+
 ## [3.1.0] - 2026-11-22
 
 ### Added

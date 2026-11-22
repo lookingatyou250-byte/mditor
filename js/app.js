@@ -1122,12 +1122,30 @@ class App {
      * 文件加载处理
      */
     _onFileLoaded(content, fileName) {
-        // 隐藏欢迎页，显示内容区
+        // 清理上一个文档遗留的自动保存定时器
+        if (this.autoSaveTimer) {
+            clearTimeout(this.autoSaveTimer);
+            this.autoSaveTimer = null;
+        }
+
+        // 隐藏欢迎页
         this._hideWelcome();
-        this.elements.content.style.display = 'block';
 
         this.currentContent = content;
         this.hasUnsavedChanges = false;
+
+        // 严格保证阅读区与编辑区互斥显示（杜绝同时出现左右两栏和双滚动条）
+        const isEmptyDoc = !content || !content.trim();
+        if (!isEmptyDoc) {
+            this.isEditMode = false;
+            if (this.elements.editorContainer) {
+                this.elements.editorContainer.style.display = 'none';
+            }
+            if (this.elements.content) {
+                this.elements.content.style.display = 'block';
+            }
+            this._updateModeUI();
+        }
 
         // 更新文件名
         if (this.elements.fileName) {
@@ -1176,25 +1194,33 @@ class App {
         }
         this._updateReadingProgress();
 
-        // 同步编辑器
-        if (this.editor && this.isEditMode) {
-            this.editor.setValue(content);
-        }
-
         this._showToast(`已加载: ${fileName}`, 'success');
 
-        // 空白文件自动进入编辑模式
-        if (!content || !content.trim()) {
-            this._setMode('edit');
+        // 空白文件自动进入编辑模式（并确保阅读区彻底隐藏）
+        if (isEmptyDoc) {
+            if (this.elements.content) {
+                this.elements.content.style.display = 'none';
+            }
+            if (this.isEditMode && this.editor) {
+                this.editor.setValue('');
+                this.hasUnsavedChanges = false;
+                this._updateSaveIndicator();
+                if (this.elements.editorContainer) {
+                    this.elements.editorContainer.style.display = 'block';
+                }
+                this.editor.focus();
+            } else {
+                this._setMode('edit');
+            }
             return;
         }
 
         // 在阅读模式下，延迟加载持久化的高亮
-        if (!this.isEditMode) {
-            setTimeout(() => {
+        setTimeout(() => {
+            if (!this.isEditMode) {
                 this._loadHighlightsFromPersistence();
-            }, 100);
-        }
+            }
+        }, 100);
     }
 
     /**
