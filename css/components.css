@@ -2439,10 +2439,6 @@ kbd {
     color: var(--color-accent);
 }
 
-.ai-bridge-segment {
-    margin-bottom: 10px;
-}
-
 .ai-bridge-prompt {
     width: 100%;
     min-height: 184px;

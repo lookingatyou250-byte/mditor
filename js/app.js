@@ -336,7 +336,6 @@ class App {
             aiBridgePath: document.getElementById('ai-bridge-path'),
             aiBridgeCopyPath: document.getElementById('ai-bridge-copy-path'),
             aiBridgeOpenDir: document.getElementById('ai-bridge-open-dir'),
-            aiBridgeHarnessSegment: document.getElementById('ai-bridge-harness-segment'),
             aiBridgePrompt: document.getElementById('ai-bridge-prompt'),
             aiBridgeResetPrompt: document.getElementById('ai-bridge-reset-prompt'),
             aiBridgeCopyPrompt: document.getElementById('ai-bridge-copy-prompt'),
@@ -5022,11 +5021,10 @@ graph LR
     }
 
     /**
-     * 初始化「内置 AI 桥接插件配置」弹窗（路径定位拷贝 + 多 Harness 安装 Prompt 生成器）
+     * 初始化「内置 AI 桥接插件配置」弹窗（路径定位拷贝 + 统一安装 Prompt 生成）
      */
     _initAiBridgeModal() {
         this.aiBridgeModalVisible = false;
-        this.aiBridgeHarness = localStorage.getItem('mditor-bridge-harness') || 'auto';
         this._aiBridgeInfo = null;
 
         const {
@@ -5034,7 +5032,6 @@ graph LR
             aiBridgeClose,
             aiBridgeCopyPath,
             aiBridgeOpenDir,
-            aiBridgeHarnessSegment,
             aiBridgeResetPrompt,
             aiBridgeCopyPrompt,
             aiBridgePath,
@@ -5069,17 +5066,9 @@ graph LR
             }
         });
 
-        aiBridgeHarnessSegment?.addEventListener('click', (e) => {
-            const btn = e.target.closest('[data-harness]');
-            if (!btn) return;
-            this.aiBridgeHarness = btn.dataset.harness || 'auto';
-            localStorage.setItem('mditor-bridge-harness', this.aiBridgeHarness);
-            this._updateAiBridgePromptUI();
-        });
-
         aiBridgeResetPrompt?.addEventListener('click', () => {
             this._updateAiBridgePromptUI();
-            this._showToast('已重置为当前 Harness 安装模板', 'info');
+            this._showToast('已重置安装 Prompt', 'info');
         });
 
         aiBridgeCopyPrompt?.addEventListener('click', async () => {
@@ -5090,14 +5079,7 @@ graph LR
             }
             const ok = await this._copyPlainText(promptText);
             if (ok) {
-                const labelMap = {
-                    auto: '通用安装 Prompt',
-                    dsh: 'DSH 安装 Prompt',
-                    codex: 'Codex 接入 Prompt',
-                    claude: 'Claude Code 接入 Prompt'
-                };
-                const name = labelMap[this.aiBridgeHarness] || '安装 Prompt';
-                this._showToast(`已复制${name}，直接粘贴给对应 Harness 发送即可`, 'success');
+                this._showToast('已复制安装 Prompt，直接粘贴给任意 Harness 发送即可', 'success');
             }
         });
     }
@@ -5162,19 +5144,15 @@ graph LR
     }
 
     _updateAiBridgePromptUI() {
-        const harness = this.aiBridgeHarness || 'auto';
-        this.elements.aiBridgeHarnessSegment?.querySelectorAll('[data-harness]').forEach(btn => {
-            btn.classList.toggle('active', btn.dataset.harness === harness);
-        });
         if (this.elements.aiBridgePrompt) {
-            this.elements.aiBridgePrompt.value = this._buildAiBridgeInstallPrompt(harness);
+            this.elements.aiBridgePrompt.value = this._buildAiBridgeInstallPrompt();
         }
     }
 
     /**
-     * 按目标 Harness 生成可直接粘贴执行的自包含安装/接入 Prompt
+     * 生成统一的通用安装/接入 Prompt，发给任意 Harness 即可自行识别并配置
      */
-    _buildAiBridgeInstallPrompt(harness = 'auto') {
+    _buildAiBridgeInstallPrompt() {
         const info = this._aiBridgeInfo || {};
         const pluginDir = info.pluginDir || '<mditor 内置 dsh-plugin 目录>';
         const inboxDir = info.inboxDir || '~/.mditor/dsh-inbox';
@@ -5182,64 +5160,22 @@ graph LR
             ? 'macOS'
             : (info.platform === 'win32' ? 'Windows' : (info.platform || 'Desktop'));
 
-        if (harness === 'dsh') {
-            return [
-                '请帮我安装并启用 mditor 内置的本机桥接插件 `@local/mditor-bridge`，让我可以在 mditor 阅读器里划词引用后一键预填到你的新对话草稿框。',
-                '',
-                `1. 本地内置插件目录（${osLabel}）：`,
-                `   ${pluginDir}`,
-                '2. 请检查该目录中的 `package.json`、`cordis.patch.yml`、`index.js`、`client.js`，并将它作为本地插件安装/注册到当前 DeepSeek Harness (DSH) Profile 中且保持启用。',
-                `3. 桥接通信约定：mditor 会在 \`${inboxDir}\` 原子写入 \`*.json\`（字段：\`id\`、\`prompt\`、\`filePath\`、\`cwd\`、\`createdAt\`），插件通过 SSE 路由 \`/__mditor_bridge/events\` 推送给前端自动在 \`cwd\` 对应工作区打开草稿会话。`,
-                '4. 安装完成后，请验证插件已激活（检查 `cordis` / 插件列表及 `/__mditor_bridge/events` 路由），并告诉我是否需要刷新或重启 DSH。'
-            ].join('\n');
-        }
-
-        if (harness === 'codex') {
-            return [
-                '请帮我把本机 mditor 阅读器的「划词引用 / 暂存批注」桥接接入当前 Codex 环境。',
-                '',
-                `1. 环境：${osLabel}`,
-                `2. 参考实现（mditor 内置桥接插件源码目录）：`,
-                `   ${pluginDir}`,
-                `3. 通信协议：我在 mditor 里点击「发给 AI」时，mditor 会把完整引用复制到剪贴板，同时原子写入 JSON 到：`,
-                `   ${inboxDir}/*.json`,
-                '   JSON 字段包含：`{ id, prompt, filePath, cwd, createdAt }`。',
-                '4. 请结合当前 Codex 支持的扩展方式（Skill / MCP Server / 启动脚本或工作流），帮我创建并配置一个读取/消费该 inbox 目录的技能或工具（例如 `/mditor` 或 MCP tool `read_mditor_inbox`），读取最新一条引用并自动标记已消费。',
-                '5. 配置完成后给我一个简短的验证测试（写入并读取一条测试草稿，然后清理测试文件）。'
-            ].join('\n');
-        }
-
-        if (harness === 'claude') {
-            return [
-                '请帮我把本机 mditor 阅读器的「划词引用 / 暂存批注」桥接接入当前 Claude Code 环境。',
-                '',
-                `1. 环境：${osLabel}`,
-                `2. 参考源码（mditor 内置桥接插件目录）：`,
-                `   ${pluginDir}`,
-                `3. 通信协议：我在 mditor 里点击「发给 AI」时，mditor 会原子写入 JSON 到：`,
-                `   ${inboxDir}/*.json`,
-                '   字段为：`{ id, prompt, filePath, cwd, createdAt }`（并同时写入系统剪贴板）。',
-                '4. 请帮我在 Claude Code 中配置一个自定义 Slash Command（如 `~/.claude/commands/mditor.md`）或轻量的本地 MCP / Hook，让我输入 `/mditor` 就能自动拉取并消费最新一条 mditor 引用与批注，直接进入对应 `filePath` / `cwd` 处理。',
-                '5. 完成后请做一次端到端验证并告诉我用法。'
-            ].join('\n');
-        }
-
-        // auto（自动识别当前 Harness）
         return [
-            '请帮我配置本机 mditor 阅读器的 AI 桥接插件/能力，让我可以在 mditor 里划词引用、暂存批注并一键发给你处理。',
+            '请帮我把本机 mditor 阅读器的「划词引用 / 暂存批注」桥接接入你当前所在的 AI Harness 环境，让我可以在 mditor 里选段批注后直接发给你处理。',
             '',
             `【本机环境】${osLabel}`,
-            '【mditor 内置插件目录】',
+            '【mditor 内置桥接插件目录】',
             pluginDir,
             '【mditor 投递目录与协议】',
             `${inboxDir}/*.json`,
             '每条文件为 JSON：`{ "id", "prompt", "filePath", "cwd", "createdAt" }`（发送时 mditor 也会同步复制一份到系统剪贴板）。',
             '',
             '【请你自动执行】',
-            '1. 先识别你当前运行的 AI Harness 类型，并查看上述内置插件目录里的 `package.json`、`index.js`、`client.js`：',
-            '   - 如果你是 **DeepSeek Harness (DSH)**：直接将上述本地目录安装/启用为本地插件（`@local/mditor-bridge`），验证 SSE 路由 `/__mditor_bridge/events` 生效。',
-            '   - 如果你是 **Codex / Claude Code / Cursor / 其他 Agent Harness**：利用你的原生扩展能力（Skill / Slash Command / MCP Server / 本地脚本），为我配置一键读取并消费上述 inbox 目录最新引用的入口（如 `/mditor`）。',
-            '2. 配置完成后做一次快速自检，并告诉我如何开始使用。'
+            '1. 查看上述内置插件目录中的 `package.json`、`cordis.patch.yml`、`index.js`、`client.js`，理解现有桥接方式。',
+            '2. 根据你当前运行的 Harness 架构，用最原生的方式完成安装与接入：',
+            '   - 若支持本地插件包（如 DeepSeek Harness / DSH）：直接从上述目录安装并启用 `@local/mditor-bridge`，验证 SSE 路由 `/__mditor_bridge/events` 可正常将草稿填入对应 `cwd` 工作区。',
+            '   - 若通过 Skill / Slash Command / MCP Server / 脚本扩展（如 Codex、Claude Code、Cursor 等）：创建对应的消费入口（例如 `/mditor` 命令、Skill 或 MCP tool），支持读取并消费上述 inbox 目录中最新的引用草稿并切入对应 `filePath` / `cwd`。',
+            '3. 完成后做一次快速自检并告诉我如何使用。'
         ].join('\n');
     }
 
