@@ -2,6 +2,11 @@
 
 All notable changes to **mditor** are documented in this file.
 
+## [4.0.4] - 2026-11-23
+
+### Fixed
+- Windows 安装统一按当前用户或全系统范围注册 `.md`、`.markdown` 的打开命令与文档图标，修复升级后双击 Markdown 文件不打开的问题。
+
 ## [4.0.3] - 2026-11-23
 
 ### Added

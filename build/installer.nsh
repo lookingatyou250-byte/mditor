@@ -1,38 +1,40 @@
-; Custom NSIS installer script for mditor
-; This script ensures proper file association with "%1" parameter
+; Keep the legacy Markdown ProgIDs for existing Windows defaults.
+!macro MDITOR_ASSOCIATE EXT CLASS
+  WriteRegStr SHELL_CONTEXT "Software\Classes\${CLASS}" "" "Markdown 文档"
+  WriteRegStr SHELL_CONTEXT "Software\Classes\${CLASS}\DefaultIcon" "" '"$INSTDIR\resources\app\build\doc.ico",0'
+  WriteRegStr SHELL_CONTEXT "Software\Classes\${CLASS}\shell\open\command" "" '"$INSTDIR\mditor.exe" "%1"'
+  WriteRegStr SHELL_CONTEXT "Software\Classes\.${EXT}" "" "${CLASS}"
+!macroend
+
+!macro MDITOR_UNASSOCIATE EXT CLASS
+  ReadRegStr $R0 SHELL_CONTEXT "Software\Classes\${CLASS}\shell\open\command" ""
+  ${if} $R0 == '"$INSTDIR\mditor.exe" "%1"'
+    DeleteRegKey SHELL_CONTEXT "Software\Classes\${CLASS}"
+    ReadRegStr $R0 SHELL_CONTEXT "Software\Classes\.${EXT}" ""
+    ${if} $R0 == "${CLASS}"
+      DeleteRegValue SHELL_CONTEXT "Software\Classes\.${EXT}" ""
+    ${endif}
+  ${endif}
+!macroend
 
 !macro customInstall
-  ; Register .md file association
-  WriteRegStr HKCR ".md" "" "mditor.md"
-  WriteRegStr HKCR "mditor.md" "" "Markdown 文档"
-  WriteRegStr HKCR "mditor.md\DefaultIcon" "" "$INSTDIR\resources\app\build\doc.ico"
-  WriteRegStr HKCR "mditor.md\shell\open\command" "" '"$INSTDIR\mditor.exe" "%1"'
-
-  ; Register "New Markdown 文档" in right-click context menu
-  WriteRegStr HKCR ".md\ShellNew" "NullFile" ""
-  WriteRegStr HKCR ".md\ShellNew" "ItemName" "Markdown 文档"
-  WriteRegStr HKCR ".md\ShellNew" "IconPath" "$INSTDIR\resources\app\build\doc.ico"
-
-  ; Register .markdown file association
-  WriteRegStr HKCR ".markdown" "" "mditor.markdown"
-  WriteRegStr HKCR "mditor.markdown" "" "Markdown 文档"
-  WriteRegStr HKCR "mditor.markdown\DefaultIcon" "" "$INSTDIR\resources\app\build\doc.ico"
-  WriteRegStr HKCR "mditor.markdown\shell\open\command" "" '"$INSTDIR\mditor.exe" "%1"'
-
-  ; Refresh shell icons
-  System::Call 'Shell32::SHChangeNotify(i 0x8000000, i 0, p 0, p 0)'
+  !insertmacro MDITOR_ASSOCIATE "md" "mditor.md"
+  !insertmacro MDITOR_ASSOCIATE "markdown" "mditor.markdown"
+  WriteRegStr SHELL_CONTEXT "Software\Classes\.md\ShellNew" "NullFile" ""
+  WriteRegStr SHELL_CONTEXT "Software\Classes\.md\ShellNew" "ItemName" "Markdown 文档"
+  WriteRegStr SHELL_CONTEXT "Software\Classes\.md\ShellNew" "IconPath" "$INSTDIR\resources\app\build\doc.ico"
+  System::Call 'Shell32::SHChangeNotify(i 0x08000000, i 0, p 0, p 0)'
 !macroend
 
 !macro customUnInstall
-  ; Remove .md file association
-  DeleteRegKey HKCR "mditor.md"
-  DeleteRegKey HKCR ".md\ShellNew"
-  DeleteRegKey HKCR ".md"
-
-  ; Remove .markdown file association
-  DeleteRegKey HKCR "mditor.markdown"
-  DeleteRegKey HKCR ".markdown"
-
-  ; Refresh shell icons
-  System::Call 'Shell32::SHChangeNotify(i 0x8000000, i 0, p 0, p 0)'
+  !insertmacro MDITOR_UNASSOCIATE "md" "mditor.md"
+  !insertmacro MDITOR_UNASSOCIATE "markdown" "mditor.markdown"
+  ReadRegStr $R0 SHELL_CONTEXT "Software\Classes\.md\ShellNew" "IconPath"
+  ${if} $R0 == "$INSTDIR\resources\app\build\doc.ico"
+    DeleteRegValue SHELL_CONTEXT "Software\Classes\.md\ShellNew" "NullFile"
+    DeleteRegValue SHELL_CONTEXT "Software\Classes\.md\ShellNew" "ItemName"
+    DeleteRegValue SHELL_CONTEXT "Software\Classes\.md\ShellNew" "IconPath"
+    DeleteRegKey /ifempty SHELL_CONTEXT "Software\Classes\.md\ShellNew"
+  ${endif}
+  System::Call 'Shell32::SHChangeNotify(i 0x08000000, i 0, p 0, p 0)'
 !macroend
