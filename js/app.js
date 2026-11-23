@@ -842,10 +842,12 @@ class App {
 
         // 执行重命名
         if (window.electronAPI?.renameFile) {
+            const quoteFileKey = this._getCurrentDocKey();
             const result = await window.electronAPI.renameFile(this.currentFilePath, finalName);
             if (result.success) {
                 this.currentFilePath = result.filePath;
                 this.elements.fileName.textContent = result.fileName;
+                this._moveQuoteFileContext(quoteFileKey, result.fileName);
                 this._showToast(`已重命名为: ${result.fileName}`, 'success');
                 this._loadFileTree();
             } else {
@@ -1485,6 +1487,8 @@ class App {
         this._hideWelcome();
 
         this.currentContent = '';
+        if (!this.currentFilePath) this.stagedQuotesByFile.delete(this._getCurrentDocKey());
+        this._quoteDraftId = (this._quoteDraftId || 0) + 1;
         this.currentFilePath = null;
         this.parser.setBasePath(null);
         window.electronAPI?.setCurrentFile?.(null);
@@ -1521,6 +1525,7 @@ class App {
 
         const content = this.editor ? this.editor.getValue() : this.currentContent;
 
+        const quoteFileKey = this._getCurrentDocKey();
         try {
             const result = await window.electronAPI.saveFile(content, forceDialog);
 
@@ -1532,6 +1537,7 @@ class App {
                     this.elements.fileName.textContent = result.fileName;
                 }
 
+                this._moveQuoteFileContext(quoteFileKey, result.fileName);
                 this._updateSaveIndicator();
                 this._showToast(`已保存: ${result.fileName}`, 'success');
                 this._loadFileTree();
@@ -1979,7 +1985,7 @@ class App {
      * 判断指定主题是否为深色系
      */
     _isDarkTheme(theme) {
-        return theme === 'dark' || theme === 'midnight';
+        return theme === 'dark' || theme === 'midnight' || theme === 'pine';
     }
 
     /**
@@ -2022,7 +2028,8 @@ class App {
             paper: '纯净纸白',
             sage: '护眼松绿',
             dark: '暖炭黑',
-            midnight: '静谧墨蓝'
+            midnight: '静谧墨蓝',
+            pine: '深松绿'
         };
         const next = themes[themeId] ? themeId : 'light';
 
@@ -2044,7 +2051,7 @@ class App {
      * 快捷键循环切换主题 (⌘⇧D / Ctrl+Shift+D)
      */
     _toggleTheme() {
-        const order = ['light', 'paper', 'sage', 'dark', 'midnight'];
+        const order = ['light', 'paper', 'sage', 'dark', 'midnight', 'pine'];
         const current = this.state.get('ui.theme') || 'light';
         const idx = order.indexOf(current);
         const next = order[(idx + 1) % order.length];
@@ -4887,9 +4894,24 @@ graph LR
      */
     _getCurrentDocKey() {
         if (this.currentFilePath) {
-            return this.currentFilePath.replace(/\\/g, '/').toLowerCase();
+            return window.electronAPI?.platform === 'win32'
+                ? this.currentFilePath.replace(/\\/g, '/').toLowerCase()
+                : this.currentFilePath;
         }
-        return `untitled:${this.elements.fileName?.textContent || '未命名'}`;
+        return `untitled:${this._quoteDraftId || 0}:${this.elements.fileName?.textContent || '未命名'}`;
+    }
+
+    _moveQuoteFileContext(previousKey, fileName) {
+        const currentKey = this._getCurrentDocKey();
+        const file = { fileName, filePath: this.currentFilePath };
+        const previous = this.stagedQuotesByFile.get(previousKey) || [];
+        if (previous.length) {
+            if (previousKey !== currentKey) this.stagedQuotesByFile.delete(previousKey);
+            const existing = previousKey === currentKey ? [] : this._getCurrentStagedQuotes();
+            this._setCurrentStagedQuotes([...existing, ...previous.map(item => ({ ...item, ...file }))]);
+        }
+        if (this._pendingQuoteContext) Object.assign(this._pendingQuoteContext, file);
+        this._renderStagedQuotesUI();
     }
 
     _getCurrentStagedQuotes() {
@@ -5517,15 +5539,11 @@ graph LR
             fileName: this._pendingQuoteContext.fileName
         };
 
+        const key = this._getCurrentDocKey();
         const batch = [...this._getCurrentStagedQuotes(), currentItem];
         this._closeAiQuotePopover();
 
-        const ok = await this._dispatchQuotesToAi(batch);
-        if (ok) {
-            this._setCurrentStagedQuotes([]);
-            this.aiStageDrawerOpen = false;
-            this._renderStagedQuotesUI();
-        }
+        if (await this._dispatchQuotesToAi(batch)) this._removeSentQuotes(key, batch);
     }
 
     /**
@@ -5537,10 +5555,17 @@ graph LR
             this._showToast('当前文档暂无已暂存的引用', 'info');
             return;
         }
+        const key = this._getCurrentDocKey();
         const batch = [...list];
-        const ok = await this._dispatchQuotesToAi(batch);
-        if (ok) {
-            this._setCurrentStagedQuotes([]);
+        if (await this._dispatchQuotesToAi(batch)) this._removeSentQuotes(key, batch);
+    }
+
+    _removeSentQuotes(key, items) {
+        const sentIds = new Set(items.map(item => item.id));
+        const remaining = (this.stagedQuotesByFile.get(key) || []).filter(item => !sentIds.has(item.id));
+        if (remaining.length) this.stagedQuotesByFile.set(key, remaining);
+        else this.stagedQuotesByFile.delete(key);
+        if (key === this._getCurrentDocKey()) {
             this.aiStageDrawerOpen = false;
             this._renderStagedQuotesUI();
         }
@@ -5549,12 +5574,28 @@ graph LR
     /**
      * 组装带文件上下文与章节引用的结构化 Prompt
      */
-    _buildAiReviewPrompt(items) {
+    _buildAiReviewPrompt(items, statsByPath = new Map()) {
         if (!items || items.length === 0) return '';
 
-        const uniquePaths = [...new Set(items.map(it => it.filePath).filter(Boolean))];
-        const singleFilePath = uniquePaths.length === 1 ? uniquePaths[0] : null;
-        const singleFileName = items[0]?.fileName || '未命名';
+        const files = new Map();
+        const fileNumbers = items.map(item => {
+            const key = item.filePath || `untitled:${item.fileName || '未命名'}`;
+            if (!files.has(key)) files.set(key, { item, number: files.size + 1 });
+            return files.get(key).number;
+        });
+        const properties = [...files.values()].map(({ item, number }) => {
+            const name = item.fileName || item.filePath?.split(/[/\\]/).pop() || '未命名';
+            const type = this.parser.classifyDocument(name);
+            const stats = statsByPath.get(item.filePath);
+            const fields = [
+                `${files.size > 1 ? `文件 ${number}` : '文件'}：${JSON.stringify(name)}`,
+                `类型：${type.label}`
+            ];
+            if (item.filePath) fields.push(`路径：${item.filePath.replace(/[\r\n]/g, ch => ch === '\n' ? '\\n' : '\\r')}`);
+            if (Number.isFinite(stats?.size)) fields.push(`磁盘大小：${stats.size} B`);
+            if (stats?.modifiedAt) fields.push(`磁盘修改时间：${stats.modifiedAt}`);
+            return fields.join('\n');
+        }).join('\n\n');
 
         const formatQuoteBlock = (text) =>
             String(text || '')
@@ -5564,39 +5605,39 @@ graph LR
 
         if (items.length === 1) {
             const it = items[0];
-            const header = it.filePath
-                ? `关于文件 \`${it.filePath}\`${it.location ? `（${it.location}）` : ''}中的这段内容：`
-                : `关于文档《${singleFileName}》${it.location ? `（${it.location}）` : ''}中的这段内容：`;
-
-            const quotePart = formatQuoteBlock(it.quote);
-            const notePart = it.note ? `\n\n${it.note}` : '\n\n请帮我审阅或优化这段内容。';
-            return `${header}\n\n${quotePart}${notePart}`;
+            const location = it.location ? `\n位置：${it.location}` : '';
+            const request = it.note || '请帮我审阅或优化这段内容。';
+            return `${properties}${location}\n\n${formatQuoteBlock(it.quote)}\n\n${request}`;
         }
 
-        const header = singleFilePath
-            ? `请参考以下 ${items.length} 条引用和意见，处理文件 \`${singleFilePath}\`：`
-            : `请参考以下 ${items.length} 条引用和意见：`;
-
         const body = items.map((it, idx) => {
-            const filePrefix = !singleFilePath && it.filePath ? `文件 \`${it.filePath}\` · ` : '';
-            const locText = it.location ? `【${filePrefix}${it.location}】` : (filePrefix ? `【${filePrefix.replace(/ · $/, '')}】` : '');
-            const quoteLines = formatQuoteBlock(it.quote);
-            const noteLine = it.note ? `\n意见：${it.note}` : '\n意见：（请重点审阅/优化此段）';
-            return `${idx + 1}. ${locText}\n${quoteLines}${noteLine}`;
+            const location = [files.size > 1 ? `文件 ${fileNumbers[idx]}` : '', it.location].filter(Boolean).join(' · ');
+            const header = location ? `${idx + 1}. ${location}` : `${idx + 1}. 引用`;
+            const request = it.note || '请重点审阅或优化此段。';
+            return `${header}\n${formatQuoteBlock(it.quote)}\n\n意见：${request}`;
         }).join('\n\n');
 
-        return `${header}\n\n${body}`;
+        return `${properties}\n\n请参考以下 ${items.length} 条引用和意见：\n\n${body}`;
     }
 
     /**
      * 将组装好的 Prompt 发送给本机 AI 或复制到剪贴板
      */
     async _dispatchQuotesToAi(items) {
-        const prompt = this._buildAiReviewPrompt(items);
+        const provider = this._getActiveAiProvider();
+        const paths = [...new Set(items.map(it => it.filePath).filter(Boolean))];
+        const statsByPath = new Map(await Promise.all(paths.map(async filePath => {
+            try {
+                const stat = await window.electronAPI?.statPath?.(filePath);
+                return [filePath, stat?.isFile ? stat : null];
+            } catch {
+                return [filePath, null];
+            }
+        })));
+        const prompt = this._buildAiReviewPrompt(items, statsByPath);
         if (!prompt) return false;
 
-        const primaryPath = items.find(it => it.filePath)?.filePath || this.currentFilePath || null;
-        const provider = this._getActiveAiProvider();
+        const primaryPath = paths[0] || null;
 
         if (provider && provider.id === 'dsh' && window.electronAPI?.sendToDsh) {
             const result = await window.electronAPI.sendToDsh({
@@ -5613,18 +5654,9 @@ graph LR
         }
 
         // 仅复制模式或非 Electron 兜底
-        try {
-            if (window.electronAPI?.copyText) {
-                await window.electronAPI.copyText(prompt);
-            } else {
-                await navigator.clipboard.writeText(prompt);
-            }
-            this._showToast(`已复制 ${items.length} 条引用内容到剪贴板`, 'success');
-            return true;
-        } catch {
-            this._showToast('复制失败', 'error');
-            return false;
-        }
+        if (!await this._copyPlainText(prompt)) return false;
+        this._showToast(`已复制 ${items.length} 条引用`, 'success');
+        return true;
     }
 
     /**

@@ -1,6 +1,6 @@
 (function () {
-    const validThemes = new Set(['light', 'paper', 'sage', 'dark', 'midnight']);
-    const darkThemes = new Set(['dark', 'midnight']);
+    const validThemes = new Set(['light', 'paper', 'sage', 'dark', 'midnight', 'pine']);
+    const darkThemes = new Set(['dark', 'midnight', 'pine']);
     const saved = localStorage.getItem('md-reader-theme');
     const theme = (saved && validThemes.has(saved))
         ? saved

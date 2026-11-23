@@ -270,7 +270,8 @@ const THEME_BG_COLORS = {
     paper: '#FCFCFB',
     sage: '#EDF2EC',
     dark: '#21201C',
-    midnight: '#161B22'
+    midnight: '#161B22',
+    pine: '#19231E'
 };
 
 // ========== 窗口创建 ==========
@@ -457,7 +458,8 @@ ipcMain.handle('stat-path', async (_event, targetPath) => {
             isFile: stat.isFile(),
             isDirectory: stat.isDirectory(),
             path: path.normalize(targetPath),
-            name: path.basename(targetPath)
+            name: path.basename(targetPath),
+            ...(stat.isFile() ? { size: stat.size, modifiedAt: stat.mtime.toISOString() } : {})
         };
     } catch {
         return null;

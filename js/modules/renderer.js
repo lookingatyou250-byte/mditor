@@ -316,8 +316,7 @@ class Renderer {
             const mermaid = await this._ensureMermaidLoaded();
             if (!mermaid) return;
 
-            const themeId = this.state.get('ui.theme') || 'light';
-            const isDark = themeId === 'dark' || themeId === 'midnight';
+            const isDark = document.documentElement.dataset.colorScheme === 'dark';
             const styles = getComputedStyle(document.documentElement);
             const readVar = (name, fallback) => (styles.getPropertyValue(name) || '').trim() || fallback;
 
