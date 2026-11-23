@@ -2,6 +2,14 @@
 
 All notable changes to **mditor** are documented in this file.
 
+## [4.0.2] - 2026-11-23
+
+### Added
+- **内置 AI 桥接插件配置弹窗（路径拷贝 + 多 Harness 安装 Prompt 生成器）**：
+  - 点击设置面板「配置内置 AI 桥接插件」不再直接盲弹文件管理器，而是打开清爽的配置面板。
+  - **路径区**：直接展示本机真实内置插件目录（`@local/mditor-bridge`），支持一键「复制路径」与「打开目录」。
+  - **一键安装 Prompt**：内置 4 套结构化安装提示词模板（**自动识别 / DSH / Codex / Claude Code**），自动填入本机真实插件目录、Inbox 协议路径（`~/.mditor/dsh-inbox/*.json`）与系统环境，支持编辑微调与一键复制，粘贴给任意 AI Harness 即可自动完成安装或桥接接入。
+
 ## [4.0.1] - 2026-11-22
 
 ### Added

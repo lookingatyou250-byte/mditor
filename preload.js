@@ -90,9 +90,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // 解析并打开本地链接（.md 在 mditor 内直接打开）
     openLocalLink: (payload) => ipcRenderer.invoke('open-local-link', payload),
 
-    // 复制文本 & 一键发送到本机 AI & 定位桥接插件目录
+    // 复制文本 & 一键发送到本机 AI & 定位/读取桥接插件信息
     copyText: (text) => ipcRenderer.invoke('copy-text', text),
     sendToDsh: (payload) => ipcRenderer.invoke('send-to-dsh', payload),
+    getAiBridgeInfo: () => ipcRenderer.invoke('get-ai-bridge-info'),
     revealAiBridgePlugin: () => ipcRenderer.invoke('reveal-ai-bridge-plugin'),
 
     // 检查更新与版本

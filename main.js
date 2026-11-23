@@ -740,6 +740,19 @@ function resolveDshBridgePluginDir() {
     return null;
 }
 
+ipcMain.handle('get-ai-bridge-info', async () => {
+    const dir = resolveDshBridgePluginDir();
+    const inboxDir = path.join(os.homedir(), '.mditor', 'dsh-inbox');
+    return {
+        success: Boolean(dir),
+        pluginDir: dir || '',
+        inboxDir,
+        platform: process.platform,
+        appVersion: require('./package.json').version,
+        error: dir ? null : '未找到内置桥接插件目录'
+    };
+});
+
 ipcMain.handle('reveal-ai-bridge-plugin', async () => {
     const dir = resolveDshBridgePluginDir();
     if (!dir) {

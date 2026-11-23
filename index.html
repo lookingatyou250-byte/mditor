@@ -466,16 +466,65 @@
               <span class="settings-item-label">默认联动 AI</span>
               <span id="ai-provider-name" class="settings-item-value">DSH</span>
             </div>
-            <button id="reveal-ai-bridge-btn" class="settings-btn">定位内置 AI 桥接插件（新电脑配置用）</button>
+            <button id="reveal-ai-bridge-btn" class="settings-btn">配置内置 AI 桥接插件（路径 / 安装 Prompt）</button>
           </div>
           <!-- 检查更新 -->
           <div class="settings-item">
             <div class="settings-item-header">
               <span class="settings-item-label">版本</span>
-              <span id="app-version" class="settings-item-value">v4.0.1</span>
+              <span id="app-version" class="settings-item-value">v4.0.2</span>
             </div>
             <button id="check-update-btn" class="settings-btn">检查更新</button>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- AI 桥接插件配置弹窗（路径拷贝 + 打开目录 + 生成 Harness 安装 Prompt） -->
+    <div id="ai-bridge-modal" class="ai-bridge-modal" style="display: none;">
+      <div class="ai-bridge-overlay" id="ai-bridge-overlay"></div>
+      <div class="ai-bridge-dialog" role="dialog" aria-modal="true" aria-labelledby="ai-bridge-title">
+        <div class="settings-header">
+          <h3 id="ai-bridge-title">配置内置 AI 桥接插件</h3>
+          <button type="button" id="ai-bridge-close" class="settings-close-btn" title="关闭 (Esc)" aria-label="关闭">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M18 6L6 18M6 6l12 12"/>
+            </svg>
+          </button>
+        </div>
+        <div class="ai-bridge-body">
+          <!-- 插件路径区 -->
+          <div class="ai-bridge-section">
+            <div class="settings-item-header">
+              <span class="settings-item-label">内置插件目录</span>
+              <span class="settings-item-value">@local/mditor-bridge</span>
+            </div>
+            <div class="ai-bridge-path-row">
+              <input type="text" id="ai-bridge-path" class="ai-bridge-path-input" readonly value="读取中...">
+              <button type="button" id="ai-bridge-copy-path" class="ai-bridge-mini-btn" title="复制插件目录路径">复制路径</button>
+              <button type="button" id="ai-bridge-open-dir" class="ai-bridge-mini-btn" title="在系统文件管理器中打开目录">打开目录</button>
+            </div>
+          </div>
+
+          <!-- Harness 安装 Prompt 生成器 -->
+          <div class="ai-bridge-section">
+            <div class="settings-item-header">
+              <span class="settings-item-label">一键安装 Prompt</span>
+              <span class="settings-item-value">粘贴给任意 Harness 自动配置</span>
+            </div>
+            <div class="settings-segment ai-bridge-segment" id="ai-bridge-harness-segment">
+              <button type="button" class="segment-btn active" data-harness="auto">自动识别</button>
+              <button type="button" class="segment-btn" data-harness="dsh">DSH</button>
+              <button type="button" class="segment-btn" data-harness="codex">Codex</button>
+              <button type="button" class="segment-btn" data-harness="claude">Claude Code</button>
+            </div>
+            <textarea id="ai-bridge-prompt" class="ai-bridge-prompt" rows="9" spellcheck="false"></textarea>
+            <div class="ai-bridge-hint">打开你想接入的 AI Harness（如 DSH、Codex、Claude Code 等），粘贴发送即可由它自动完成插件安装或桥接配置。</div>
+          </div>
+        </div>
+        <div class="ai-bridge-footer">
+          <button type="button" id="ai-bridge-reset-prompt" class="ai-btn secondary">重置模板</button>
+          <button type="button" id="ai-bridge-copy-prompt" class="ai-btn primary">复制安装 Prompt</button>
         </div>
       </div>
     </div>

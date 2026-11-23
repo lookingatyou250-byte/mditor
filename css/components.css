@@ -2345,3 +2345,138 @@ kbd {
     border-radius: 4px;
     box-shadow: 0 1px 0 var(--color-border);
 }
+
+/* ----------------------
+   AI Bridge Config Modal
+   ---------------------- */
+.ai-bridge-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 2200;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.ai-bridge-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+    backdrop-filter: blur(2px);
+}
+
+.ai-bridge-dialog {
+    position: relative;
+    width: 520px;
+    max-width: calc(100% - 32px);
+    max-height: calc(100vh - 48px);
+    background: var(--bg-card);
+    border: 1px solid var(--color-border);
+    border-radius: 12px;
+    box-shadow: var(--shadow-float);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    animation: dialogSlideIn 0.16s ease-out;
+}
+
+.ai-bridge-body {
+    padding: 16px 20px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.ai-bridge-section {
+    display: flex;
+    flex-direction: column;
+}
+
+.ai-bridge-path-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.ai-bridge-path-input {
+    flex: 1;
+    min-width: 0;
+    height: 32px;
+    padding: 0 10px;
+    border-radius: 7px;
+    border: 1px solid var(--color-border);
+    background: var(--bg-sidebar);
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    outline: none;
+}
+
+.ai-bridge-path-input:focus {
+    border-color: var(--color-accent);
+}
+
+.ai-bridge-mini-btn {
+    height: 32px;
+    padding: 0 10px;
+    border-radius: 7px;
+    border: 1px solid var(--color-border);
+    background: var(--bg-card);
+    color: var(--text-primary);
+    font-family: var(--font-sans);
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    white-space: nowrap;
+    flex-shrink: 0;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.ai-bridge-mini-btn:hover {
+    background: var(--bg-hover);
+    border-color: var(--color-accent);
+    color: var(--color-accent);
+}
+
+.ai-bridge-segment {
+    margin-bottom: 10px;
+}
+
+.ai-bridge-prompt {
+    width: 100%;
+    min-height: 184px;
+    max-height: 290px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--color-border);
+    background: var(--bg-sidebar);
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    line-height: 1.55;
+    resize: vertical;
+    outline: none;
+    transition: border-color 0.15s;
+}
+
+.ai-bridge-prompt:focus {
+    border-color: var(--color-accent);
+}
+
+.ai-bridge-hint {
+    margin-top: 8px;
+    font-size: 11.5px;
+    line-height: 1.5;
+    color: var(--text-tertiary);
+}
+
+.ai-bridge-footer {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 12px 20px;
+    border-top: 1px solid var(--color-border);
+    background: var(--bg-card);
+}
