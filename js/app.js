@@ -2121,7 +2121,8 @@ class App {
         const mod = this.isMac ? '⌘' : 'Ctrl+';
         const shiftMod = this.isMac ? '⇧⌘' : 'Ctrl+Shift+';
         const altMod = this.isMac ? '⌥⌘' : 'Ctrl+Alt+';
-        const demoContent = `# 欢迎使用 mditor 4.0
+        const version = this.elements.appVersion?.textContent?.trim();
+        const demoContent = `# 欢迎使用 mditor${version ? ` ${version}` : ''}
 
 一个极简、轻盈的本地纯文本与 Markdown 阅读器 — 支持 \`.md\`、代码（\`.js\` / \`.ts\` / \`.py\` / \`.json\` / \`.yml\` 等 36 种语言）、日志（\`.txt\` / \`.log\`）与表格（\`.csv\` / \`.tsv\`）[^1]。
 
