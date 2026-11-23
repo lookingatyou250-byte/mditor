@@ -18,17 +18,42 @@ async function processIcon() {
 
     console.log('处理图标中...');
 
-    // 读取原图
-    const image = sharp(inputPath);
-    const metadata = await image.metadata();
-    console.log(`原图尺寸: ${metadata.width}x${metadata.height}`);
+    // 读取原图并统一转为 1024x1024 带透明通道的圆角 PNG（消除原图 JPEG 四角实心白边）
+    const rawBuffer = fs.readFileSync(inputPath);
+    const metadata = await sharp(rawBuffer).metadata();
+    console.log(`原图格式: ${metadata.format}, 尺寸: ${metadata.width}x${metadata.height}, hasAlpha: ${metadata.hasAlpha}`);
+
+    const masterSize = 1024;
+    const cornerRadius = 244;
+    const roundedMask = Buffer.from(
+        `<svg width="${masterSize}" height="${masterSize}" xmlns="http://www.w3.org/2000/svg">
+            <rect x="0" y="0" width="${masterSize}" height="${masterSize}" rx="${cornerRadius}" ry="${cornerRadius}" fill="#ffffff"/>
+        </svg>`
+    );
+
+    const masterPngBuffer = await sharp(rawBuffer)
+        .resize(masterSize, masterSize, {
+            kernel: sharp.kernel.lanczos3,
+            fit: 'cover'
+        })
+        .ensureAlpha()
+        .composite([{
+            input: roundedMask,
+            blend: 'dest-in'
+        }])
+        .png({ quality: 100, compressionLevel: 9 })
+        .toBuffer();
+
+    // 同步写回 assets/icon.png（保证 Electron 窗口 / 任务栏图标也是真正带透明圆角的 PNG）
+    fs.writeFileSync(inputPath, masterPngBuffer);
+    console.log('✓ 更新 assets/icon.png 为透明圆角 RGBA PNG');
 
     // 生成各种尺寸的 PNG (用于 ICO)
     const sizes = [16, 24, 32, 48, 64, 128, 256, 512];
 
     for (const size of sizes) {
         const outputPath = path.join(outputDir, `icon-${size}.png`);
-        await sharp(inputPath)
+        await sharp(masterPngBuffer)
             .resize(size, size, {
                 kernel: sharp.kernel.lanczos3,  // 高质量缩放算法
                 fit: 'contain',
@@ -40,14 +65,7 @@ async function processIcon() {
     }
 
     // 生成 1024x1024 高清版本
-    await sharp(inputPath)
-        .resize(1024, 1024, {
-            kernel: sharp.kernel.lanczos3,
-            fit: 'contain',
-            background: { r: 0, g: 0, b: 0, alpha: 0 }
-        })
-        .png({ quality: 100 })
-        .toFile(path.join(outputDir, 'icon-1024.png'));
+    fs.writeFileSync(path.join(outputDir, 'icon-1024.png'), masterPngBuffer);
     console.log('✓ 生成 1024x1024 高清版');
 
     // 生成圆形版本 (macOS 风格)
@@ -58,7 +76,7 @@ async function processIcon() {
         </svg>`
     );
 
-    await sharp(inputPath)
+    await sharp(masterPngBuffer)
         .resize(circleSize, circleSize, { kernel: sharp.kernel.lanczos3 })
         .composite([{
             input: circleBuffer,
