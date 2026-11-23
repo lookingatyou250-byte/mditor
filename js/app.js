@@ -4634,7 +4634,7 @@ graph LR
      * 应用阅读字体
      */
     _applyReaderFont() {
-        const fontVar = this.readerFont === 'serif' ? 'var(--font-serif)' : 'var(--font-sans)';
+        const fontVar = this.readerFont === 'serif' ? 'var(--font-serif)' : 'var(--font-reader-sans)';
         document.documentElement.style.setProperty('--reader-font-family', fontVar);
         this._updateTypographyUI();
     }

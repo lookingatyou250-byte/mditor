@@ -1,6 +1,6 @@
 {
   "name": "mditor",
-  "version": "4.0.4",
+  "version": "4.0.5-test4",
   "description": "极简本地纯文本与 Markdown 阅读器",
   "main": "main.js",
   "scripts": {

@@ -2,6 +2,10 @@
 
 All notable changes to **mditor** are documented in this file.
 
+## [4.0.5-test4] - 2026-11-23
+
+- 以 v4.0.4 为基准；默认无衬线的中文正文使用内置 Adobe 思源黑体 SC，英文继续优先使用系统 Inter。衬线设置和界面布局不变。
+
 ## [4.0.4] - 2026-11-23
 
 ### Fixed

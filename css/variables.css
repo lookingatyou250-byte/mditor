@@ -1,3 +1,12 @@
+@font-face {
+  font-family: 'Mditor Source Han Sans SC';
+  src: url('../lib/source-han-sans/SourceHanSansSC-VF.otf.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 250 900;
+  font-display: swap;
+  unicode-range: U+2E80-2FFF, U+3000-303F, U+31C0-31EF, U+3400-4DBF, U+4E00-9FFF, U+F900-FAFF, U+FF01-FF60, U+FFE0-FFE6, U+20000-323AF;
+}
+
 :root {
   /* ----------------------
      Design Tokens
@@ -5,6 +14,7 @@
 
   /* 字体系统（离线优先，原生适配 macOS / Windows） */
   --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Segoe UI", Helvetica, Arial, sans-serif;
+  --font-reader-sans: 'Inter', 'Mditor Source Han Sans SC', -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Segoe UI", Helvetica, Arial, sans-serif;
   --font-serif: 'Noto Serif SC', "Songti SC", "STSong", "Merriweather", "Georgia", serif;
   --font-mono: 'JetBrains Mono', "SF Mono", "Fira Code", Menlo, Monaco, Consolas, 'Andale Mono', monospace;
 
@@ -27,7 +37,7 @@
   /* 阅读与编辑排版变量（可被 JS 动态覆盖） */
   --editor-font-size: 16px;
   --reader-font-size: 16px;
-  --reader-font-family: var(--font-sans);
+  --reader-font-family: var(--font-reader-sans);
   --content-max-width: 800px;
 }
 
