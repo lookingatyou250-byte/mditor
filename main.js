@@ -36,6 +36,13 @@ function readTextFileSafe(filePath) {
     }
 }
 
+// Optional isolated preview profile for side-by-side test builds.
+if (process.argv.includes('--font-test-preview')) {
+    const previewData = path.join(app.getPath('appData'), `mditor-font-preview-${app.getVersion()}`);
+    fs.mkdirSync(previewData, { recursive: true });
+    app.setPath('userData', previewData);
+}
+
 // ========== 单实例模式 ==========
 const gotTheLock = app.requestSingleInstanceLock();
 

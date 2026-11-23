@@ -2,6 +2,10 @@
 
 All notable changes to **mditor** are documented in this file.
 
+## [4.0.5-test1] - 2026-11-23
+
+- 字体对照：恢复阅读区和编辑区旧版字体，保留现有排版和配色。字体素材离线随包提供。
+
 ## [4.0.4] - 2026-11-23
 
 ### Fixed
