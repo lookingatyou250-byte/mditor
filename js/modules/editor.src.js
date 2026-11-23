@@ -9,15 +9,15 @@ import { markdown } from '@codemirror/lang-markdown';
 import { syntaxHighlighting, defaultHighlightStyle, bracketMatching } from '@codemirror/language';
 import { oneDark } from '@codemirror/theme-one-dark';
 
-// 自定义主题配置
+// 自定义主题配置 - 匹配 mditor 的阅读模式风格（跟随用户无衬线/衬线体设置）
 const mditorTheme = EditorView.theme({
     '&': {
         fontSize: 'var(--editor-font-size, 16px)',
-        fontFamily: '"Mditor Legacy Serif", Georgia, serif',
+        fontFamily: 'var(--reader-font-family, var(--font-sans))',
         backgroundColor: 'transparent'
     },
     '.cm-content': {
-        fontFamily: '"Mditor Legacy Serif", Georgia, serif',
+        fontFamily: 'var(--reader-font-family, var(--font-sans))',
         lineHeight: '1.8',
         padding: '2rem 0',
         caretColor: 'var(--color-accent)'
@@ -58,8 +58,8 @@ const mditorTheme = EditorView.theme({
     '.cm-emphasis': { fontStyle: 'italic' },
     '.cm-strikethrough': { textDecoration: 'line-through' },
     '.cm-link': { color: 'var(--color-accent-hover)', textDecoration: 'underline' },
-    '.cm-url': { color: 'var(--text-secondary)', fontFamily: '"Mditor Legacy Mono", monospace', fontSize: '0.9em' },
-    '.cm-monospace': { fontFamily: '"Mditor Legacy Mono", monospace', fontSize: '0.9em' },
+    '.cm-url': { color: 'var(--text-secondary)', fontFamily: '"JetBrains Mono", monospace', fontSize: '0.9em' },
+    '.cm-monospace': { fontFamily: '"JetBrains Mono", monospace', fontSize: '0.9em' },
     // 幽灵提示样式
     '.cm-placeholder': {
         color: 'var(--text-tertiary, #96938A)',
