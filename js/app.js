@@ -4635,10 +4635,6 @@ graph LR
     _applyReaderFont() {
         const fontVar = this.readerFont === 'serif' ? 'var(--font-serif)' : 'var(--font-sans)';
         document.documentElement.style.setProperty('--reader-font-family', fontVar);
-        const legacyReader = this.readerFont === 'serif'
-            ? '"Mditor Legacy Serif", "Merriweather", Georgia, serif'
-            : '"Mditor Legacy Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif';
-        this.elements.content?.style.setProperty('--legacy-reader-font', legacyReader);
         this._updateTypographyUI();
     }
 
