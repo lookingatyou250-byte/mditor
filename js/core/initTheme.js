@@ -8,6 +8,11 @@
     const isDark = darkThemes.has(theme);
     document.documentElement.dataset.theme = theme;
     document.documentElement.dataset.colorScheme = isDark ? 'dark' : 'light';
+    const platform = (typeof window !== 'undefined' && window.electronAPI && window.electronAPI.platform)
+        || (typeof navigator !== 'undefined' && navigator.platform && navigator.platform.toLowerCase().includes('mac') ? 'darwin' : '');
+    if (platform) {
+        document.documentElement.dataset.platform = platform;
+    }
     const hljsTheme = document.getElementById('hljs-theme');
     if (hljsTheme) {
         hljsTheme.href = isDark

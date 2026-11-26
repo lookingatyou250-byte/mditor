@@ -2,6 +2,11 @@
 
 All notable changes to **mditor** are documented in this file.
 
+## [4.0.6] - 2026-11-26
+
+### Changed
+- **macOS 恢复 `v4.0.1` 原生无衬线字体栈（SF Pro + 苹方 PingFang SC）**：保持苹果视网膜屏原生通透观感；Windows / Linux 继续使用内置离线思源黑体 SC。
+
 ## [4.0.5] - 2026-11-23
 
 - 默认无衬线的中文正文使用离线内置的 Adobe 思源黑体 SC，英文继续优先使用系统 Inter。衬线设置和界面布局不变。

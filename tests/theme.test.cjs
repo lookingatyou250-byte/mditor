@@ -25,3 +25,17 @@ test('picker has three day and three night themes and restores deep pine as a da
     assert.match(read('css/variables.css'), /body\[data-theme="pine"\] \{\s*--bg-body: #19231E;/);
     assert.match(read('main.js'), /pine: '#19231E'/);
 });
+
+test('macOS keeps native v4.0.1 sans font stack while non-macOS uses offline Source Han Sans SC', () => {
+    const css = read('css/variables.css');
+    assert.match(css, /:root\[data-platform="darwin"\][\s\S]*?--font-reader-sans:\s*var\(--font-sans\);/);
+
+    const root = { dataset: {} };
+    const link = {};
+    vm.runInNewContext(read('js/core/initTheme.js'), {
+        localStorage: { getItem: () => 'light' },
+        window: { electronAPI: { platform: 'darwin' }, matchMedia: () => ({ matches: false }) },
+        document: { documentElement: root, getElementById: () => link }
+    });
+    assert.equal(root.dataset.platform, 'darwin');
+});

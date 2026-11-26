@@ -191,6 +191,8 @@ class App {
     _detectPlatform() {
         const platform = window.electronAPI?.platform || (navigator.platform?.toLowerCase().includes('mac') ? 'darwin' : 'web');
         this.isMac = platform === 'darwin';
+        document.documentElement.dataset.platform = platform;
+        document.documentElement.classList.add(`platform-${platform}`);
         document.body.classList.add(`platform-${platform}`);
 
         if (window.electronAPI?.onFullscreenChanged) {
@@ -4631,10 +4633,11 @@ graph LR
     }
 
     /**
-     * 应用阅读字体
+     * 应用阅读字体（macOS 保持原生 SF Pro + 苹方，Windows/Linux 使用离线思源黑体）
      */
     _applyReaderFont() {
-        const fontVar = this.readerFont === 'serif' ? 'var(--font-serif)' : 'var(--font-reader-sans)';
+        const sansVar = this.isMac ? 'var(--font-sans)' : 'var(--font-reader-sans)';
+        const fontVar = this.readerFont === 'serif' ? 'var(--font-serif)' : sansVar;
         document.documentElement.style.setProperty('--reader-font-family', fontVar);
         this._updateTypographyUI();
     }

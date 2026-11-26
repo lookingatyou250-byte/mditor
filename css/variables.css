@@ -41,6 +41,13 @@
   --content-max-width: 800px;
 }
 
+/* macOS 保留 v4.0.1 原生 SF Pro + 苹方字体栈；Windows/Linux 使用内置离线思源黑体 */
+:root[data-platform="darwin"],
+:root.platform-darwin,
+body.platform-darwin {
+  --font-reader-sans: var(--font-sans);
+}
+
 /* 亮色主题 (默认 - Claude 经典羊皮纸 / 燕麦暖色风格) */
 :root {
   /* 基础背景与表面 (Anthropic Pampas & Warm Parchment) */
