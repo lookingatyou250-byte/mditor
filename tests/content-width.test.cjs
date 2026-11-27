@@ -39,7 +39,7 @@ test('content width supports narrow, medium, wide, and full modes', () => {
     }
 });
 
-test('markdown tables render inside .md-table-wrap with breakout expansion and horizontal scroll', () => {
+test('markdown tables and CSV views stay aligned with --content-max-width and scroll when overflowing', () => {
     const marked = require(path.join(__dirname, '..', 'lib', 'marked.min.js'));
     const parserSandbox = {
         marked,
@@ -57,7 +57,7 @@ test('markdown tables render inside .md-table-wrap with breakout expansion and h
     assert.match(html, /<\/table><\/div>/);
 
     const css = read('css/markdown.css');
-    assert.match(css, /\.content-area > \.md-table-wrap\s*\{[\s\S]*width:\s*fit-content;[\s\S]*min-width:\s*min\(var\(--content-max-width\),\s*100%\);[\s\S]*max-width:\s*100%;/);
+    assert.doesNotMatch(css, /\.content-area > \.md-table-wrap/);
     assert.match(css, /\.md-table-wrap\s*\{[\s\S]*overflow-x:\s*auto;/);
-    assert.match(css, /\.content-area > \.doc-table-view\s*\{[\s\S]*max-width:\s*100%;/);
+    assert.match(css, /\.content-area > \.doc-code-view,\s*\.content-area > \.doc-plain-view,\s*\.content-area > \.doc-table-view\s*\{\s*max-width:\s*min\(var\(--content-max-width\),\s*100%\);/);
 });
