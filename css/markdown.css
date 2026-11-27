@@ -255,6 +255,20 @@ body[data-theme="dark"] td>code {
 }
 
 /* Tables */
+.md-table-wrap {
+    width: 100%;
+    overflow-x: auto;
+    margin-bottom: 1.5em;
+    padding-bottom: 2px;
+}
+
+.content-area > .md-table-wrap {
+    width: fit-content;
+    min-width: min(var(--content-max-width), 100%);
+    max-width: 100%;
+    margin: 0 auto 1.5em;
+}
+
 table {
     border-collapse: collapse;
     width: 100%;
@@ -262,11 +276,21 @@ table {
     font-size: 15px;
 }
 
+.md-table-wrap > table {
+    width: 100%;
+    margin-bottom: 0;
+}
+
 th,
 td {
     border: 1px solid var(--color-border);
     padding: 8px 12px;
     text-align: left;
+}
+
+.md-table-wrap th,
+.md-table-wrap td {
+    min-width: 3.2em;
 }
 
 th {
@@ -625,9 +649,12 @@ details[open] summary {
    v4.0 通用文本 / 代码 / CSV 表格阅读视图
    ---------------------- */
 .content-area > .doc-code-view,
-.content-area > .doc-plain-view,
-.content-area > .doc-table-view {
+.content-area > .doc-plain-view {
     max-width: min(100%, max(1160px, var(--content-max-width)));
+}
+
+.content-area > .doc-table-view {
+    max-width: 100%;
 }
 
 .doc-view-header {
@@ -850,11 +877,19 @@ details[open] summary {
         padding-right: 0 !important;
     }
 
+    .md-table-wrap {
+        width: 100% !important;
+        min-width: 0 !important;
+        max-width: 100% !important;
+        overflow: visible !important;
+    }
+
     pre,
     blockquote,
     .callout,
     .mermaid-block,
     .math-block,
+    .md-table-wrap,
     table,
     figure {
         break-inside: avoid;

@@ -2,6 +2,12 @@
 
 All notable changes to **mditor** are documented in this file.
 
+## [4.0.8] - 2026-11-27
+
+### Changed
+- **Markdown 宽表自动舒展与防裁切**：为 `.md` 内的 Markdown 表格包裹横向滚动容器（`.md-table-wrap`）；普通短表保持与正文版心对齐，宽表自动突破正文版心向左右居中舒展至窗口宽度，超宽表支持底部横向滚动而不裁切列。
+- **CSV / TSV 表格视图默认铺满**：`.doc-table-view` 默认占满窗口可用宽度。
+
 ## [4.0.7] - 2026-11-27
 
 ### Changed

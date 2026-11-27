@@ -4836,7 +4836,7 @@ graph LR
     _captureRenderedBlockFingerprints() {
         const counts = new Map();
         if (!this.elements.content) return counts;
-        const blocks = this.elements.content.querySelectorAll(':scope > p, :scope > h1, :scope > h2, :scope > h3, :scope > h4, :scope > h5, :scope > h6, :scope > blockquote, :scope > .callout, :scope > pre, :scope > ul, :scope > ol, :scope > table, :scope > .math-block, :scope > .mermaid-block');
+        const blocks = this.elements.content.querySelectorAll(':scope > p, :scope > h1, :scope > h2, :scope > h3, :scope > h4, :scope > h5, :scope > h6, :scope > blockquote, :scope > .callout, :scope > pre, :scope > ul, :scope > ol, :scope > .md-table-wrap, :scope > table, :scope > .math-block, :scope > .mermaid-block');
         blocks.forEach((el) => {
             const key = (el.textContent || '').replace(/\s+/g, ' ').trim();
             if (!key) return;
@@ -4857,7 +4857,7 @@ graph LR
         }
 
         const remaining = new Map(oldCounts);
-        const blocks = this.elements.content.querySelectorAll(':scope > p, :scope > h1, :scope > h2, :scope > h3, :scope > h4, :scope > h5, :scope > h6, :scope > blockquote, :scope > .callout, :scope > pre, :scope > ul, :scope > ol, :scope > table, :scope > .math-block, :scope > .mermaid-block');
+        const blocks = this.elements.content.querySelectorAll(':scope > p, :scope > h1, :scope > h2, :scope > h3, :scope > h4, :scope > h5, :scope > h6, :scope > blockquote, :scope > .callout, :scope > pre, :scope > ul, :scope > ol, :scope > .md-table-wrap, :scope > table, :scope > .math-block, :scope > .mermaid-block');
         const updatedEls = [];
 
         blocks.forEach((el) => {

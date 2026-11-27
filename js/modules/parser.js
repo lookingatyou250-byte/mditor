@@ -201,6 +201,12 @@ class MarkdownParser {
             return `<${tag}${startAttr}>${body}</${tag}>`;
         };
 
+        // 表格：外包横向滚动容器，支持宽表自动向外舒展且超宽不裁切
+        renderer.table = (header, body) => {
+            const tbody = body ? `<tbody>\n${body}</tbody>\n` : '';
+            return `<div class="md-table-wrap"><table>\n<thead>\n${header}</thead>\n${tbody}</table></div>\n`;
+        };
+
         marked.use({ renderer });
 
         const self = this;

@@ -379,7 +379,7 @@ class Renderer {
      * 设置段落交互（Focus Mode 用）
      */
     _setupParagraphInteraction() {
-        const blocks = this.contentEl.querySelectorAll('p, h1, h2, h3, h4, h5, h6, pre, ul, ol, blockquote, table');
+        const blocks = this.contentEl.querySelectorAll(':scope > p, :scope > h1, :scope > h2, :scope > h3, :scope > h4, :scope > h5, :scope > h6, :scope > pre, :scope > ul, :scope > ol, :scope > blockquote, :scope > .callout, :scope > .md-table-wrap, :scope > table');
 
         blocks.forEach(block => {
             block.addEventListener('mouseenter', () => {
