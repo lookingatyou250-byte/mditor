@@ -4647,11 +4647,12 @@ graph LR
      */
     _applyContentWidth() {
         const widthMap = {
-            narrow: '680px',
-            medium: '800px',
-            wide: '960px'
+            narrow: '720px',
+            medium: '880px',
+            wide: '1120px',
+            full: '100%'
         };
-        const width = widthMap[this.contentWidth] || '800px';
+        const width = widthMap[this.contentWidth] || '880px';
         document.documentElement.style.setProperty('--content-max-width', width);
         this._updateTypographyUI();
     }

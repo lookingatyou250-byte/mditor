@@ -572,7 +572,7 @@
     flex: 1;
     overflow-y: auto;
     overflow-x: hidden;
-    padding: 40px 0 100px 60px; /* 右侧无padding，滚动条贴窗口边缘 */
+    padding: 40px 40px 100px;
     scroll-behavior: smooth;
     background-color: var(--bg-body);
 }
@@ -615,7 +615,7 @@
 
 .editor-area .cm-scroller {
     overflow: auto;
-    padding: 40px 60px 100px;
+    padding: 40px 48px 100px;
 }
 
 /* 编辑器滚动条 - 默认隐藏，通过 JS 类控制显示 */
@@ -643,7 +643,7 @@
 
 /* 编辑器内容区宽度自适应（跟随用户版心宽度设置） */
 .editor-area .cm-content {
-    max-width: min(var(--content-max-width, 800px), 100% - 80px);
+    max-width: min(var(--content-max-width, 880px), 100%);
     margin: 0 auto;
 }
 
@@ -653,12 +653,6 @@
     }
     .editor-area .cm-content {
         max-width: 100%;
-    }
-}
-
-@media (min-width: 1200px) {
-    .editor-area .cm-content {
-        max-width: var(--content-max-width, 800px);
     }
 }
 

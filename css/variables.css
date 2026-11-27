@@ -38,7 +38,7 @@
   --editor-font-size: 16px;
   --reader-font-size: 16px;
   --reader-font-family: var(--font-reader-sans);
-  --content-max-width: 800px;
+  --content-max-width: 880px;
 }
 
 /* macOS 保留 v4.0.1 原生 SF Pro + 苹方字体栈；Windows/Linux 使用内置离线思源黑体 */
