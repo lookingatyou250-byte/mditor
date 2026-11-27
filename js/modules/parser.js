@@ -278,9 +278,88 @@ class MarkdownParser {
                     renderer(token) {
                         return `<mark>${token.text}</mark>`;
                     }
+                },
+                {
+                    name: 'cjkStrong',
+                    level: 'inline',
+                    start(src) {
+                        const match = src.match(/(?<![*\\])\*\*(?![*\s])/);
+                        return match ? match.index : undefined;
+                    },
+                    tokenizer(src) {
+                        if (!src.startsWith('**') || src[2] === '*' || /\s/.test(src[2] || '')) return;
+                        const closePos = self._findClosingDoubleStar(src);
+                        if (closePos === -1) return;
+                        const inner = src.slice(2, closePos);
+                        if (!inner || !/^[\p{P}\p{S}]|[\p{P}\p{S}]$/u.test(inner)) return;
+                        return {
+                            type: 'cjkStrong',
+                            raw: src.slice(0, closePos + 2),
+                            tokens: this.lexer.inlineTokens(inner)
+                        };
+                    },
+                    renderer(token) {
+                        return `<strong>${this.parser.parseInline(token.tokens)}</strong>`;
+                    }
                 }
             ]
         });
+    }
+
+    /**
+     * 在单段落内查找配对的闭合 **（跳过转义、行内代码与行内公式）
+     */
+    _findClosingDoubleStar(src) {
+        let i = 2;
+        const len = src.length;
+        while (i < len) {
+            const ch = src[i];
+            if (ch === '\\') {
+                i += 2;
+                continue;
+            }
+            if (ch === '\n' && src[i + 1] === '\n') {
+                return -1;
+            }
+            if (ch === '`') {
+                let ticks = 0;
+                while (i + ticks < len && src[i + ticks] === '`') ticks++;
+                const closeIdx = src.indexOf('`'.repeat(ticks), i + ticks);
+                if (closeIdx !== -1) {
+                    i = closeIdx + ticks;
+                    continue;
+                }
+                i += ticks;
+                continue;
+            }
+            if (ch === '$' && src[i + 1] !== '$' && src[i + 1] && !/\s/.test(src[i + 1])) {
+                let j = i + 1;
+                while (j < len && src[j] !== '\n') {
+                    if (src[j] === '\\') { j += 2; continue; }
+                    if (src[j] === '$' && !/\s/.test(src[j - 1])) {
+                        i = j + 1;
+                        j = -1;
+                        break;
+                    }
+                    j++;
+                }
+                if (j === -1) continue;
+            }
+            if (ch === '*' && src[i + 1] === '*') {
+                let run = 2;
+                while (i + run < len && src[i + run] === '*') run++;
+                if (run === 2 || run === 3) {
+                    const closePos = run === 3 ? i + 1 : i;
+                    if (closePos > 2 && !/\s/.test(src[closePos - 1])) {
+                        return closePos;
+                    }
+                }
+                i += run;
+                continue;
+            }
+            i++;
+        }
+        return -1;
     }
 
     /**

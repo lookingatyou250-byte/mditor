@@ -117,13 +117,7 @@ class Renderer {
             if (mermaidDiagram) {
                 const svgEl = mermaidDiagram.querySelector('svg');
                 if (svgEl) {
-                    const cloned = svgEl.cloneNode(true);
-                    if (!cloned.getAttribute('xmlns')) {
-                        cloned.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
-                    }
-                    const svgData = new XMLSerializer().serializeToString(cloned);
-                    const dataUrl = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgData);
-                    this._openImageLightbox(dataUrl, 'Mermaid 图表预览（按 Esc 或点击空白处关闭）');
+                    this._openSvgLightbox(svgEl);
                 }
             }
         });
@@ -135,17 +129,66 @@ class Renderer {
     _openImageLightbox(src, alt) {
         const lightbox = document.getElementById('image-lightbox');
         const lightboxImg = document.getElementById('image-lightbox-img');
+        const lightboxSvg = document.getElementById('image-lightbox-svg');
         const lightboxCaption = document.getElementById('image-lightbox-caption');
         if (!lightbox || !lightboxImg) return;
 
+        if (lightboxSvg) {
+            lightboxSvg.style.display = 'none';
+            lightboxSvg.innerHTML = '';
+        }
+        lightboxImg.style.display = 'block';
         lightboxImg.src = src;
         lightboxImg.alt = alt;
-        lightboxImg.classList.toggle('is-svg-preview', String(src || '').startsWith('data:image/svg+xml'));
         if (lightboxCaption) {
             lightboxCaption.textContent = alt;
             lightboxCaption.style.display = alt ? 'block' : 'none';
         }
         lightbox.style.display = 'flex';
+        lightbox.dispatchEvent(new CustomEvent('lightbox:reset'));
+    }
+
+    /**
+     * 打开 Mermaid 矢量图灯箱（直接挂载克隆的 SVG，缩放保持锐利）
+     */
+    _openSvgLightbox(svgEl) {
+        const lightbox = document.getElementById('image-lightbox');
+        const lightboxImg = document.getElementById('image-lightbox-img');
+        const lightboxSvg = document.getElementById('image-lightbox-svg');
+        const lightboxCaption = document.getElementById('image-lightbox-caption');
+        if (!lightbox || !lightboxSvg) return;
+
+        const cloned = svgEl.cloneNode(true);
+        if (!cloned.getAttribute('xmlns')) {
+            cloned.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+        }
+        // 根据 viewBox 还原矢量自然尺寸，避免宽图在灯箱初始显示过小
+        const vb = cloned.getAttribute('viewBox');
+        if (vb) {
+            const parts = vb.trim().split(/[\s,]+/).map(Number);
+            if (parts.length === 4 && parts[2] > 0 && parts[3] > 0) {
+                const naturalW = Math.min(parts[2], Math.round(window.innerWidth * 0.88));
+                const naturalH = Math.round(naturalW * (parts[3] / parts[2]));
+                cloned.style.maxWidth = '88vw';
+                cloned.style.maxHeight = '80vh';
+                cloned.style.width = `${Math.max(naturalW, Math.min(parts[2], 720))}px`;
+                cloned.style.height = `${Math.min(naturalH, Math.round(window.innerHeight * 0.80))}px`;
+            }
+        }
+
+        if (lightboxImg) {
+            lightboxImg.style.display = 'none';
+            lightboxImg.removeAttribute('src');
+        }
+        lightboxSvg.innerHTML = '';
+        lightboxSvg.appendChild(cloned);
+        lightboxSvg.style.display = 'flex';
+        if (lightboxCaption) {
+            lightboxCaption.textContent = '';
+            lightboxCaption.style.display = 'none';
+        }
+        lightbox.style.display = 'flex';
+        lightbox.dispatchEvent(new CustomEvent('lightbox:reset'));
     }
 
     /**

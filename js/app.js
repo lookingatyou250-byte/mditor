@@ -4732,12 +4732,106 @@ graph LR
     }
 
     /**
-     * 初始化图片灯箱关闭交互
+     * 初始化图片 / 矢量图灯箱交互（滚轮缩放、拖拽平移、双击复位、点击空白关闭）
      */
     _initLightbox() {
         const lightbox = this.elements.imageLightbox;
-        if (!lightbox) return;
+        const stage = document.getElementById('image-lightbox-stage');
+        if (!lightbox || !stage) return;
+
+        const state = { scale: 1, tx: 0, ty: 0, dragging: false, moved: false, startX: 0, startY: 0, baseTx: 0, baseTy: 0 };
+        this._lightboxState = state;
+
+        const applyTransform = () => {
+            stage.style.transform = `translate3d(${state.tx}px, ${state.ty}px, 0) scale(${state.scale})`;
+        };
+
+        const resetTransform = () => {
+            state.scale = 1;
+            state.tx = 0;
+            state.ty = 0;
+            state.dragging = false;
+            state.moved = false;
+            lightbox.classList.remove('is-dragging');
+            applyTransform();
+        };
+
+        this._resetLightboxTransform = resetTransform;
+        lightbox.addEventListener('lightbox:reset', resetTransform);
+
+        // 滚轮缩放（以鼠标指针为锚点，范围 0.5x ~ 8x）
+        lightbox.addEventListener('wheel', (e) => {
+            if (lightbox.style.display === 'none') return;
+            e.preventDefault();
+            e.stopPropagation();
+
+            const factor = e.deltaY < 0 ? 1.18 : 1 / 1.18;
+            const nextScale = Math.max(0.5, Math.min(8, state.scale * factor));
+            if (nextScale === state.scale) return;
+
+            const rect = lightbox.getBoundingClientRect();
+            const ox = e.clientX - (rect.left + rect.width / 2);
+            const oy = e.clientY - (rect.top + rect.height / 2);
+            const ratio = nextScale / state.scale;
+            state.tx = ox - (ox - state.tx) * ratio;
+            state.ty = oy - (oy - state.ty) * ratio;
+            state.scale = nextScale;
+            applyTransform();
+        }, { passive: false });
+
+        // 按住拖拽平移
+        stage.addEventListener('mousedown', (e) => {
+            if (e.button !== 0) return;
+            e.preventDefault();
+            state.dragging = true;
+            state.moved = false;
+            state.startX = e.clientX;
+            state.startY = e.clientY;
+            state.baseTx = state.tx;
+            state.baseTy = state.ty;
+            lightbox.classList.add('is-dragging');
+        });
+
+        window.addEventListener('mousemove', (e) => {
+            if (!state.dragging) return;
+            const dx = e.clientX - state.startX;
+            const dy = e.clientY - state.startY;
+            if (!state.moved && (Math.abs(dx) > 4 || Math.abs(dy) > 4)) {
+                state.moved = true;
+            }
+            state.tx = state.baseTx + dx;
+            state.ty = state.baseTy + dy;
+            applyTransform();
+        });
+
+        window.addEventListener('mouseup', () => {
+            if (!state.dragging) return;
+            state.dragging = false;
+            lightbox.classList.remove('is-dragging');
+            if (state.moved) {
+                setTimeout(() => { state.moved = false; }, 0);
+            }
+        });
+
+        // 双击：已缩放时一键复位，1x 时快速放大至 2.4x
+        stage.addEventListener('dblclick', (e) => {
+            e.stopPropagation();
+            if (Math.abs(state.scale - 1) > 0.05 || Math.abs(state.tx) > 4 || Math.abs(state.ty) > 4) {
+                resetTransform();
+            } else {
+                const rect = lightbox.getBoundingClientRect();
+                const ox = e.clientX - (rect.left + rect.width / 2);
+                const oy = e.clientY - (rect.top + rect.height / 2);
+                state.scale = 2.4;
+                state.tx = ox * (1 - state.scale);
+                state.ty = oy * (1 - state.scale);
+                applyTransform();
+            }
+        });
+
+        // 点击背景空白处关闭（拖拽松手不误关闭）
         lightbox.addEventListener('click', (e) => {
+            if (state.moved) return;
             if (e.target === lightbox || e.target.id === 'image-lightbox-caption') {
                 this._closeLightbox();
             }
@@ -4747,6 +4841,7 @@ graph LR
     _closeLightbox() {
         if (this.elements.imageLightbox) {
             this.elements.imageLightbox.style.display = 'none';
+            this._resetLightboxTransform?.();
         }
     }
 
@@ -4756,6 +4851,7 @@ graph LR
     _initZoomShortcut() {
         window.addEventListener('wheel', (e) => {
             if (!(e.ctrlKey || e.metaKey)) return;
+            if (this.elements.imageLightbox && this.elements.imageLightbox.style.display !== 'none') return;
             e.preventDefault();
             const delta = e.deltaY < 0 ? 1 : -1;
             const next = Math.max(12, Math.min(24, this.fontSize + delta));
