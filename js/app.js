@@ -1164,10 +1164,7 @@ class App {
      */
     _onFileLoaded(content, fileName) {
         // 清理上一个文档遗留的自动保存定时器
-        if (this.autoSaveTimer) {
-            clearTimeout(this.autoSaveTimer);
-            this.autoSaveTimer = null;
-        }
+        this._clearAutoSave();
 
         // 隐藏欢迎页
         this._hideWelcome();
@@ -1244,7 +1241,8 @@ class App {
                 this.elements.content.style.display = 'none';
             }
             if (this.isEditMode && this.editor) {
-                this.editor.setValue('');
+                this.editor.setValue(content || '');
+                this._clearAutoSave();
                 this.hasUnsavedChanges = false;
                 this._updateSaveIndicator();
                 if (this.elements.editorContainer) {
@@ -1485,6 +1483,8 @@ class App {
      * 新建文件
      */
     _newFile() {
+        this._clearAutoSave();
+
         // 隐藏欢迎页
         this._hideWelcome();
 
@@ -1517,23 +1517,44 @@ class App {
     }
 
     /**
+     * 获取当前激活模式的文档正文（阅读模式始终使用当前文档正文，不读取隐藏编辑器中的旧正文）
+     */
+    _getCurrentContent() {
+        return this.isEditMode && this.editor ? this.editor.getValue() : this.currentContent;
+    }
+
+    /**
+     * 清理待执行的自动保存定时器
+     */
+    _clearAutoSave() {
+        if (this.autoSaveTimer) {
+            clearTimeout(this.autoSaveTimer);
+            this.autoSaveTimer = null;
+        }
+        this.elements?.saveIndicator?.classList?.remove?.('saving');
+    }
+
+    /**
      * 保存文件
      */
     async _saveFile(forceDialog = false) {
         if (!window.electronAPI?.saveFile) {
             this._showToast('保存功能仅在桌面应用中可用', 'error');
-            return;
+            return false;
         }
 
-        const content = this.editor ? this.editor.getValue() : this.currentContent;
+        this._clearAutoSave();
+        const content = this._getCurrentContent();
 
         const quoteFileKey = this._getCurrentDocKey();
         try {
             const result = await window.electronAPI.saveFile(content, forceDialog);
 
-            if (result.success) {
+            if (result?.success) {
                 this.currentFilePath = result.filePath;
-                this.hasUnsavedChanges = false;
+                if (this._getCurrentContent() === content) {
+                    this.hasUnsavedChanges = false;
+                }
 
                 if (this.elements.fileName) {
                     this.elements.fileName.textContent = result.fileName;
@@ -1542,12 +1563,15 @@ class App {
                 this._moveQuoteFileContext(quoteFileKey, result.fileName);
                 this._updateSaveIndicator();
                 this._showToast(`已保存: ${result.fileName}`, 'success');
-                this._loadFileTree();
-            } else if (result.error) {
+                await this._loadFileTree();
+                return true;
+            } else if (result?.error) {
                 this._showToast(`保存失败: ${result.error}`, 'error');
             }
+            return false;
         } catch (e) {
             this._showToast('保存时发生错误', 'error');
+            return false;
         }
     }
 
@@ -1556,7 +1580,7 @@ class App {
      * @param {string} rootPath - 可选，指定根目录。不传则使用当前文件所在目录
      */
     async _loadFileTree(rootPath = null) {
-        if (!window.electronAPI?.readDirectory) return;
+        if (!window.electronAPI?.readDirectory || !this.elements?.filetree) return;
 
         // 确定根目录
         if (rootPath) {
@@ -1573,14 +1597,15 @@ class App {
         }
 
         // 渲染文件树
-        this._renderFileTreeRoot();
+        await this._renderFileTreeRoot();
     }
 
     /**
      * 渲染文件树根部（包含目录头和返回上级按钮）
      */
     async _renderFileTreeRoot() {
-        const container = this.elements.filetree;
+        const container = this.elements?.filetree;
+        if (!container) return;
         container.innerHTML = '';
 
         // 目录头
@@ -1695,23 +1720,9 @@ class App {
                     this._loadFileTree(item.path);
                 });
             } else {
-                // 文件点击事件 - 打开文件
+                // 文件点击事件 - 打开文件（共享未保存内容保护）
                 content.addEventListener('click', async () => {
-                    const data = await window.electronAPI.readFile(item.path);
-                    if (data && data.content !== undefined) {
-                        this.currentFilePath = data.filePath;
-                        this._onFileLoaded(data.content, data.fileName);
-
-                        // 更新文件树根目录为新文件所在目录
-                        const newDir = await window.electronAPI.getCurrentDirectory();
-                        if (newDir && newDir !== this.filetreeRoot) {
-                            this.filetreeRoot = newDir;
-                            this._renderFileTreeRoot();
-                        } else {
-                            // 只更新高亮
-                            this._updateFileTreeHighlight();
-                        }
-                    }
+                    await this._openFileByPath(item.path, { syncTreeRoot: true });
                 });
             }
 
@@ -1723,7 +1734,8 @@ class App {
      * 更新文件树高亮（不重新加载）
      */
     _updateFileTreeHighlight() {
-        const items = this.elements.filetree.querySelectorAll('.filetree-item');
+        const items = this.elements?.filetree?.querySelectorAll?.('.filetree-item');
+        if (!items) return;
         items.forEach(item => {
             const nameEl = item.querySelector('.filetree-name');
             if (!nameEl) return;
@@ -1948,37 +1960,51 @@ class App {
         // 清除之前的定时器
         if (this.autoSaveTimer) {
             clearTimeout(this.autoSaveTimer);
+            this.autoSaveTimer = null;
         }
 
-        // 显示保存中状态
-        this.elements.saveIndicator?.classList.add('saving');
+        // 无路径草稿不参与自动保存，防止后续打开其他文件时误写
+        if (!this.currentFilePath) {
+            this.elements?.saveIndicator?.classList?.remove?.('saving');
+            return;
+        }
 
-        // 2秒后自动保存
+        const scheduledFilePath = this.currentFilePath;
+
+        // 显示保存中状态
+        this.elements?.saveIndicator?.classList?.add?.('saving');
+
+        // 2秒后自动保存（绑定触发时的文档路径）
         this.autoSaveTimer = setTimeout(() => {
-            this._autoSave();
+            this._autoSave(scheduledFilePath);
         }, 2000);
     }
 
     /**
      * 执行自动保存（静默）
      */
-    async _autoSave() {
+    async _autoSave(expectedFilePath = this.currentFilePath) {
+        this.autoSaveTimer = null;
         if (!window.electronAPI?.saveFile) return;
-        if (!this.currentFilePath) return;  // 新文件不自动保存
+        if (!this.currentFilePath || !this.hasUnsavedChanges || this.currentFilePath !== expectedFilePath) {
+            this.elements?.saveIndicator?.classList?.remove?.('saving');
+            return;
+        }
 
-        const content = this.editor ? this.editor.getValue() : this.currentContent;
+        const targetFilePath = this.currentFilePath;
+        const content = this._getCurrentContent();
 
         try {
             const result = await window.electronAPI.saveFile(content, false);
 
-            if (result.success) {
+            if (result?.success && this.currentFilePath === targetFilePath && this._getCurrentContent() === content) {
                 this.hasUnsavedChanges = false;
-                this.elements.saveIndicator?.classList.remove('saving');
+                this.elements?.saveIndicator?.classList?.remove?.('saving');
                 this._updateSaveIndicator();
                 this._showToast('已自动保存', 'success');
             }
         } catch (e) {
-            this.elements.saveIndicator?.classList.remove('saving');
+            this.elements?.saveIndicator?.classList?.remove?.('saving');
             console.error('Auto-save failed:', e);
         }
     }
@@ -5882,7 +5908,7 @@ graph LR
                 e.preventDefault();
                 const target = this.quickOpenFiltered[this.quickOpenIndex];
                 if (target) {
-                    this._selectQuickOpenFile(target);
+                    return this._selectQuickOpenFile(target);
                 }
             } else if (e.key === 'Escape') {
                 e.preventDefault();
@@ -5952,11 +5978,11 @@ graph LR
         `).join('');
 
         listEl.querySelectorAll('.quick-open-item').forEach(el => {
-            el.addEventListener('click', () => {
+            el.addEventListener('click', async () => {
                 const idx = parseInt(el.dataset.idx, 10);
                 const target = this.quickOpenFiltered[idx];
                 if (target) {
-                    this._selectQuickOpenFile(target);
+                    await this._selectQuickOpenFile(target);
                 }
             });
         });
@@ -5967,14 +5993,43 @@ graph LR
 
     async _selectQuickOpenFile(file) {
         this._closeQuickOpen();
-        if (!file?.path || !window.electronAPI?.readFile) return;
+        if (!file?.path) return false;
+        return this._openFileByPath(file.path);
+    }
 
-        const data = await window.electronAPI.readFile(file.path);
+    /**
+     * 通过路径安全打开文档（文件树点击与快速打开共用，在调用 readFile IPC 前保护未保存内容）
+     */
+    async _openFileByPath(filePath, { syncTreeRoot = false } = {}) {
+        if (!filePath || !window.electronAPI?.readFile) return false;
+
+        const canProceed = await this._confirmUnsavedChangesBeforeOpen();
+        if (!canProceed) return false;
+
+        this._clearAutoSave();
+        const data = await window.electronAPI.readFile(filePath);
+        if (data && data.error) {
+            this._showToast(data.error, 'error');
+            return false;
+        }
         if (data && data.content !== undefined) {
             this.currentFilePath = data.filePath;
             this._onFileLoaded(data.content, data.fileName);
-            this._updateFileTreeHighlight();
+
+            if (syncTreeRoot && window.electronAPI?.getCurrentDirectory) {
+                const newDir = await window.electronAPI.getCurrentDirectory();
+                if (newDir && newDir !== this.filetreeRoot) {
+                    this.filetreeRoot = newDir;
+                    await this._renderFileTreeRoot();
+                } else {
+                    this._updateFileTreeHighlight();
+                }
+            } else {
+                this._updateFileTreeHighlight();
+            }
+            return true;
         }
+        return false;
     }
 
     _openSearch() {
@@ -6133,14 +6188,60 @@ graph LR
     }
 
     /**
+     * 判断当前文档是否存在未保存正文修改（覆盖已有文件与非空无路径草稿）
+     */
+    _hasPendingUnsavedContent() {
+        const currentText = this._getCurrentContent();
+        return Boolean(
+            this.hasUnsavedChanges &&
+            (this.currentFilePath || (currentText && currentText.trim().length > 0))
+        );
+    }
+
+    /**
+     * 打开其他文件前确认未保存修改（保存成功或明确丢弃方可继续）
+     */
+    async _confirmUnsavedChangesBeforeOpen() {
+        if (this._unsavedPromptPending) {
+            return false;
+        }
+        if (!this._hasPendingUnsavedContent()) {
+            this._clearAutoSave();
+            return true;
+        }
+
+        this._clearAutoSave();
+        this._unsavedPromptPending = true;
+        try {
+            const action = await this._showUnsavedContentDialog('文档有尚未保存的更改，打开其他文件前是否先保存？');
+            if (action === 'save') {
+                const saved = await this._saveFile(false);
+                return Boolean(saved && !this.hasUnsavedChanges);
+            }
+            if (action === 'discard') {
+                this._clearAutoSave();
+                return true;
+            }
+            return false;
+        } finally {
+            this._unsavedPromptPending = false;
+        }
+    }
+
+    /**
      * 显示未保存正文确认对话框
      */
-    _showUnsavedContentDialog() {
+    _showUnsavedContentDialog(message = '文档有尚未保存的更改，关闭前是否先保存？') {
         return new Promise((resolve) => {
-            const dialog = document.getElementById('unsaved-content-dialog');
+            const dialog = document.getElementById?.('unsaved-content-dialog');
             if (!dialog) {
-                resolve('discard');
+                resolve('cancel');
                 return;
+            }
+
+            const messageEl = dialog.querySelector?.('.dialog-message');
+            if (messageEl) {
+                messageEl.textContent = message;
             }
 
             dialog.style.display = 'flex';
@@ -6162,16 +6263,15 @@ graph LR
      */
     async _handleWindowClose() {
         // 1. 检查未保存的正文内容
-        const currentText = this.editor ? this.editor.getValue() : this.currentContent;
-        const hasPendingTextChanges = this.hasUnsavedChanges && (this.currentFilePath || (currentText && currentText.trim().length > 0));
-        if (hasPendingTextChanges) {
+        if (this._hasPendingUnsavedContent()) {
+            this._clearAutoSave();
             const action = await this._showUnsavedContentDialog();
             if (action === 'cancel') {
                 return false;
             }
             if (action === 'save') {
-                await this._saveFile(false);
-                if (this.hasUnsavedChanges) {
+                const saved = await this._saveFile(false);
+                if (!saved || this.hasUnsavedChanges) {
                     // 用户在保存对话框点击了取消或保存失败，不关闭窗口
                     return false;
                 }
